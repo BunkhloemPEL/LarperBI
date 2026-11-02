@@ -1,0 +1,6 @@
+order_id,date,customer_id,channel,amount,is_fraud
+101,2024-01-15,c_1,Online,$150.00,0
+102,2024-01-16,c_2,Store,$85.50,0
+103,2024-02-10,c_1,Online,$450.00,1
+104,2024-02-12,c_3,Store,$120.00,0
+105,2024-03-01,c_2,Online,$220.00,0

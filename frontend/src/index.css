@@ -1,0 +1,21 @@
+@import "./styles/metabase-theme.css";
+
+/* Metabase Canvas text selection suppression */
+.react-grid-item {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
+.react-grid-item *:not(input):not(textarea) {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-user-drag: none !important;
+}
+
+/* Hide selection color entirely on dashboard cards */
+.react-grid-item *::selection {
+  background: transparent !important;
+}
+.react-grid-item *::-moz-selection {
+  background: transparent !important;
+}

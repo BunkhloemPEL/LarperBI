@@ -1,0 +1,85 @@
+/* Metabase Design System & Replicated Theme Variables */
+:root {
+  /* Surfaces */
+  --mb-color-bg-page: #f8fafc;
+  --mb-color-bg-card: #ffffff;
+  --mb-color-bg-card-hover: #ffffff;
+  --mb-color-bg-subtle: #f1f5f9;
+  
+  /* Borders */
+  --mb-color-border-card: #e2e8f0;
+  --mb-color-border-subtle: #edf2f7;
+  --mb-color-border-focus: #509ee3;
+  
+  /* Typography Colors */
+  --mb-color-text-primary: #1e293b;
+  --mb-color-text-secondary: #475569;
+  --mb-color-text-muted: #64748b;
+  --mb-color-text-subtle: #94a3b8;
+  
+  /* Brand & Feedback */
+  --mb-color-brand: #509ee3;
+  --mb-color-brand-hover: #3b8cd3;
+  --mb-color-brand-subtle: rgba(80, 158, 227, 0.1);
+  --mb-color-success: #88bf4d;
+  --mb-color-success-bg: rgba(136, 191, 77, 0.12);
+  --mb-color-error: #ef8c8c;
+  --mb-color-error-bg: rgba(239, 140, 140, 0.12);
+  --mb-color-warning: #f9d45c;
+  --mb-color-warning-bg: rgba(249, 212, 92, 0.15);
+
+  /* Official Metabase 8-Accent Chart Palette */
+  --mb-accent-0: #509ee3; /* Blue */
+  --mb-accent-1: #88bf4d; /* Green */
+  --mb-accent-2: #a989c5; /* Purple */
+  --mb-accent-3: #ef8c8c; /* Red */
+  --mb-accent-4: #f9d45c; /* Yellow */
+  --mb-accent-5: #f2a86f; /* Orange */
+  --mb-accent-6: #98d9d9; /* Cyan */
+  --mb-accent-7: #7172ad; /* Indigo */
+
+  /* Shadows */
+  --mb-shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  --mb-shadow-hover: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+  --mb-shadow-dropdown: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+
+  /* Radius */
+  --mb-radius-card: 0.75rem; /* 12px */
+  --mb-radius-pill: 9999px;
+  --mb-radius-btn: 0.375rem; /* 6px */
+  
+  /* Fonts */
+  --mb-font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mb-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--mb-font-sans);
+  background-color: var(--mb-color-bg-page);
+  color: var(--mb-color-text-primary);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar styles */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

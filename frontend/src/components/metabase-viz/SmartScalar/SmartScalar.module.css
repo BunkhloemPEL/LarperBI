@@ -1,0 +1,63 @@
+.scalarContainer {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 100%;
+  padding: 0.25rem 0;
+}
+
+.mainValue {
+  font-size: 2.125rem; /* 34px */
+  font-weight: 700;
+  color: var(--mb-color-text-primary);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+.subLabel {
+  font-size: 0.8125rem; /* 13px */
+  color: var(--mb-color-text-muted);
+  font-weight: 500;
+  margin-top: 0.25rem;
+}
+
+.comparisonRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  font-size: 0.8125rem; /* 13px */
+}
+
+.trendBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--mb-radius-pill);
+  font-weight: 600;
+  font-size: 0.75rem; /* 12px */
+  line-height: 1.25;
+}
+
+.positive {
+  background-color: var(--mb-color-success-bg);
+  color: var(--mb-color-success);
+}
+
+.negative {
+  background-color: var(--mb-color-error-bg);
+  color: var(--mb-color-error);
+}
+
+.neutral {
+  background-color: var(--mb-color-bg-subtle);
+  color: var(--mb-color-text-muted);
+}
+
+.comparisonText {
+  color: var(--mb-color-text-subtle);
+  font-weight: 400;
+  white-space: nowrap;
+}
