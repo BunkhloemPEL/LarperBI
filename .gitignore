@@ -27,5 +27,7 @@ npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
 
-# Local SQLite databases (keep schema reproducible via database.py)
-data/*.db-journal
+# Runtime data: SQLite DB, uploaded sources, Parquet tables, notebook state.
+# Schema is reproducible via database.py; demo data via backend/seed_demo.py.
+data/*
+!data/.gitkeep
