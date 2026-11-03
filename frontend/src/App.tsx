@@ -1,11 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import {
-  ChevronLeft,
-  LayoutGrid,
-  Terminal,
-  Link2,
-  Layers,
-} from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import {
   fetchDashboards,
   createDashboard,
@@ -17,15 +11,17 @@ import type { DashboardItem, DashboardDetail } from "./types/larper";
 
 import { DashboardList } from "./components/DashboardManager/DashboardList";
 import { CanvasView } from "./components/DashboardCanvas/CanvasView";
+import { DataTableView } from "./components/DataView/DataTableView";
 import { JupyterNotebook } from "./components/Notebook/JupyterNotebook";
 import { ModelView } from "./components/ModelView/ModelView";
 import { VisualGallery } from "./components/VisualGallery";
+import { DashboardSidebar } from "./components/layout/DashboardSidebar";
 
 export const App: React.FC = () => {
   const [dashboards, setDashboards] = useState<DashboardItem[]>([]);
   const [activeDashboardId, setActiveDashboardId] = useState<string | null>(null);
   const [dashboardDetail, setDashboardDetail] = useState<DashboardDetail | null>(null);
-  const [activeTab, setActiveTab] = useState<"canvas" | "python_lab" | "model" | "gallery">("canvas");
+  const [activeTab, setActiveTab] = useState<"canvas" | "data" | "python_lab" | "model" | "gallery">("canvas");
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Editable title state
@@ -214,111 +210,19 @@ export const App: React.FC = () => {
           )}
         </div>
 
-        {/* Navigation Tabs (When in a dashboard) */}
-        {activeDashboardId && (
-          <nav
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.25rem",
-              backgroundColor: "var(--mb-color-bg-subtle)",
-              padding: "0.25rem",
-              borderRadius: "8px",
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => setActiveTab("canvas")}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "0.375rem",
-                padding: "0.375rem 0.75rem",
-                borderRadius: "6px",
-                border: "none",
-                fontSize: "0.8125rem",
-                fontWeight: 600,
-                cursor: "pointer",
-                backgroundColor: activeTab === "canvas" ? "#ffffff" : "transparent",
-                color: activeTab === "canvas" ? "var(--mb-color-brand)" : "var(--mb-color-text-muted)",
-                boxShadow: activeTab === "canvas" ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
-              }}
-            >
-              <LayoutGrid size={14} />
-              Canvas
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab("python_lab")}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "0.375rem",
-                padding: "0.375rem 0.75rem",
-                borderRadius: "6px",
-                border: "none",
-                fontSize: "0.8125rem",
-                fontWeight: 600,
-                cursor: "pointer",
-                backgroundColor: activeTab === "python_lab" ? "#ffffff" : "transparent",
-                color: activeTab === "python_lab" ? "var(--mb-color-brand)" : "var(--mb-color-text-muted)",
-                boxShadow: activeTab === "python_lab" ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
-              }}
-            >
-              <Terminal size={14} />
-              Jupyter Notebook (EDA)
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab("model")}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "0.375rem",
-                padding: "0.375rem 0.75rem",
-                borderRadius: "6px",
-                border: "none",
-                fontSize: "0.8125rem",
-                fontWeight: 600,
-                cursor: "pointer",
-                backgroundColor: activeTab === "model" ? "#ffffff" : "transparent",
-                color: activeTab === "model" ? "var(--mb-color-brand)" : "var(--mb-color-text-muted)",
-                boxShadow: activeTab === "model" ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
-              }}
-            >
-              <Link2 size={14} />
-              Data Model ({dashboardDetail?.tables.length || 0})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab("gallery")}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "0.375rem",
-                padding: "0.375rem 0.75rem",
-                borderRadius: "6px",
-                border: "none",
-                fontSize: "0.8125rem",
-                fontWeight: 600,
-                cursor: "pointer",
-                backgroundColor: activeTab === "gallery" ? "#ffffff" : "transparent",
-                color: activeTab === "gallery" ? "var(--mb-color-brand)" : "var(--mb-color-text-muted)",
-                boxShadow: activeTab === "gallery" ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
-              }}
-            >
-              <Layers size={14} />
-              Visual Gallery (14)
-            </button>
-          </nav>
-        )}
       </header>
 
       {/* Main Body */}
-      <main style={{ flex: 1, padding: "1.5rem 2rem", maxWidth: "1600px", margin: "0 auto", width: "100%" }}>
+      <div style={{ display: "flex", flex: 1, minWidth: 0 }}>
+        {activeDashboardId && (
+          <DashboardSidebar
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            modelCount={dashboardDetail?.tables.length || 0}
+            galleryCount={14}
+          />
+        )}
+      <main style={{ flex: 1, padding: "1.5rem 2rem", maxWidth: "1600px", margin: "0 auto", width: "100%", minWidth: 0 }}>
         {!activeDashboardId ? (
           <DashboardList
             dashboards={dashboards}
@@ -338,7 +242,15 @@ export const App: React.FC = () => {
                 tables={dashboardDetail.tables}
                 cards={dashboardDetail.cards}
                 filters={dashboardDetail.filters || []}
+                metrics={dashboardDetail.metrics || []}
                 onRefresh={loadActiveDashboard}
+              />
+            )}
+
+            {activeTab === "data" && dashboardDetail && (
+              <DataTableView
+                dashboardId={activeDashboardId}
+                tables={dashboardDetail.tables}
               />
             )}
 
@@ -355,6 +267,7 @@ export const App: React.FC = () => {
                 dashboardId={activeDashboardId}
                 tables={dashboardDetail.tables}
                 relationships={dashboardDetail.relationships}
+                metrics={dashboardDetail.metrics || []}
                 onRefresh={loadActiveDashboard}
               />
             )}
@@ -363,6 +276,7 @@ export const App: React.FC = () => {
           </>
         )}
       </main>
+      </div>
     </div>
   );
 };

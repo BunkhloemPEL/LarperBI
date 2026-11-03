@@ -111,7 +111,13 @@ export const CanvasCardRenderer: React.FC<CanvasCardRendererProps> = ({
       return <SmartScalar data={data as SmartScalarItem} />;
     }
     if (viz_type === "donut") {
-      return <DonutChart data={data as CardBreakdownItem[]} height={customHeight} />;
+      return (
+        <DonutChart
+          data={data as CardBreakdownItem[]}
+          height={customHeight}
+          centerSubtitle={card.config.measures[0]?.alias || "Total"}
+        />
+      );
     }
     if (viz_type === "waterfall") {
       return <WaterfallChart data={data as WaterfallStep[]} height={customHeight} />;

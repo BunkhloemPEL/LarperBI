@@ -11,7 +11,7 @@ import {
   Columns,
 } from "lucide-react";
 import { runQuery, createCard, updateCard } from "../../services/api";
-import type { TableItem, CardConfig, QueryResult, CardItem } from "../../types/larper";
+import type { TableItem, CardConfig, QueryResult, CardItem, MetricItem } from "../../types/larper";
 import type { SmartScalarItem, CardBreakdownItem } from "../../types/dashboard";
 
 // Import our replicated visual components
@@ -36,6 +36,7 @@ import { ChartErrorBoundary } from "../metabase-viz/ChartErrorBoundary";
 export interface CardBuilderModalProps {
   dashboardId: string;
   tables: TableItem[];
+  metrics?: MetricItem[];
   isOpen: boolean;
   onClose: () => void;
   onCardCreated: () => void;
@@ -58,6 +59,7 @@ const VIZ_TYPES = [
 export const CardBuilderModal: React.FC<CardBuilderModalProps> = ({
   dashboardId,
   tables,
+  metrics = [],
   isOpen,
   onClose,
   onCardCreated,
@@ -73,13 +75,20 @@ export const CardBuilderModal: React.FC<CardBuilderModalProps> = ({
   const [selectedDim, setSelectedDim] = useState<string>(editingCard?.config.dimensions[0]?.column || "");
   const [dateGrain, setDateGrain] = useState<"year" | "month" | "day">(editingCard?.config.dimensions[0]?.date_grain || "month");
   const [selectedMeas, setSelectedMeas] = useState<string>(editingCard?.config.measures[0]?.column || "");
-  const [aggregation, setAggregation] = useState<"sum" | "avg" | "count" | "min" | "max">(editingCard?.config.measures[0]?.aggregation || "sum");
+  const [aggregation, setAggregation] = useState<"sum" | "avg" | "count" | "min" | "max">(
+    (editingCard?.config.measures[0]?.aggregation as "sum" | "avg" | "count" | "min" | "max") || "sum"
+  );
+  const [selectedMetricId, setSelectedMetricId] = useState<string>(editingCard?.config.measures[0]?.metric_id || "");
   // Query & Preview states
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   const selectedTable = tables.find((t) => t.id === selectedTableId) || tables[0];
+
+  // Saved metrics available for the selected table
+  const availableMetrics = metrics.filter((m) => m.table_id === selectedTableId);
+  const activeMetric = availableMetrics.find((m) => m.id === selectedMetricId);
 
   // Populate fields when editingCard changes or modal opens
   useEffect(() => {
@@ -90,10 +99,14 @@ export const CardBuilderModal: React.FC<CardBuilderModalProps> = ({
       setSelectedDim(editingCard.config.dimensions[0]?.column || "");
       setDateGrain(editingCard.config.dimensions[0]?.date_grain || "month");
       setSelectedMeas(editingCard.config.measures[0]?.column || "");
-      setAggregation(editingCard.config.measures[0]?.aggregation || "sum");
+      setSelectedMetricId(editingCard.config.measures[0]?.metric_id || "");
+      setAggregation(
+        (editingCard.config.measures[0]?.aggregation as "sum" | "avg" | "count" | "min" | "max") || "sum"
+      );
     } else {
       setTitle("New Visual Card");
       setVizType("donut");
+      setSelectedMetricId("");
       if (selectedTable) {
         const dimCol = selectedTable.columns.find((c) => c.semantic_type !== "measure") || selectedTable.columns[0];
         const measCol = selectedTable.columns.find((c) => c.semantic_type === "measure") || selectedTable.columns[1];
@@ -108,9 +121,15 @@ export const CardBuilderModal: React.FC<CardBuilderModalProps> = ({
     if (!selectedTableId) return;
     setIsLoading(true);
 
+    const previewMeasures = selectedMetricId
+      ? [{ metric_id: selectedMetricId, alias: metrics.find((m) => m.id === selectedMetricId)?.name }]
+      : selectedMeas
+        ? [{ column: selectedMeas, aggregation }]
+        : [];
+
     const config: CardConfig = {
       dimensions: selectedDim ? [{ column: selectedDim, date_grain: dateGrain }] : [],
-      measures: selectedMeas ? [{ column: selectedMeas, aggregation }] : [],
+      measures: previewMeasures,
       filters: [],
       limit: 20,
       sort_desc: true,
@@ -124,7 +143,7 @@ export const CardBuilderModal: React.FC<CardBuilderModalProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [dashboardId, selectedTableId, vizType, selectedDim, dateGrain, selectedMeas, aggregation]);
+  }, [dashboardId, selectedTableId, vizType, selectedDim, dateGrain, selectedMeas, aggregation, selectedMetricId, metrics]);
 
   useEffect(() => {
     executePreview();
@@ -141,9 +160,15 @@ export const CardBuilderModal: React.FC<CardBuilderModalProps> = ({
     if (!selectedTableId || !title.trim()) return;
     setIsSubmitting(true);
 
+    const saveMeasures = selectedMetricId
+      ? [{ metric_id: selectedMetricId, alias: metrics.find((m) => m.id === selectedMetricId)?.name }]
+      : selectedMeas
+        ? [{ column: selectedMeas, aggregation }]
+        : [];
+
     const config: CardConfig = {
       dimensions: selectedDim ? [{ column: selectedDim, date_grain: dateGrain }] : [],
-      measures: selectedMeas ? [{ column: selectedMeas, aggregation }] : [],
+      measures: saveMeasures,
       filters: [],
       limit: 30,
       sort_desc: true,
@@ -192,7 +217,13 @@ export const CardBuilderModal: React.FC<CardBuilderModalProps> = ({
       return <SmartScalar data={data as SmartScalarItem} />;
     }
     if (vizType === "donut") {
-      return <DonutChart data={data as CardBreakdownItem[]} height={280} />;
+      return (
+        <DonutChart
+          data={data as CardBreakdownItem[]}
+          height={280}
+          centerSubtitle={activeMetric?.name || "Total"}
+        />
+      );
     }
     if (vizType === "waterfall") {
       return <WaterfallChart data={data as WaterfallStep[]} height={280} />;
@@ -321,7 +352,15 @@ export const CardBuilderModal: React.FC<CardBuilderModalProps> = ({
               >
                 {tables.map((t) => (
                   <option key={t.id} value={t.id}>
-                    {t.display_name} ({t.table_type === "derived_python" ? "⚡ Derived Model" : "Raw Upload"})
+                    {t.display_name} (
+                    {t.table_type === "raw_upload"
+                      ? "Raw Upload"
+                      : t.table_type === "python_script"
+                        ? "⚡ Python Table"
+                        : t.table_type === "manual"
+                          ? "Manual Table"
+                          : "⚡ Derived Model"}
+                    {t.role === "helper" ? " · Helper" : ""})
                   </option>
                 ))}
               </select>
@@ -408,31 +447,111 @@ export const CardBuilderModal: React.FC<CardBuilderModalProps> = ({
               <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 600, color: "#475569", marginBottom: "0.25rem" }}>
                 Metric / Measure (Y-Axis):
               </label>
-              <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: "0.375rem" }}>
-                <select
-                  value={selectedMeas}
-                  onChange={(e) => setSelectedMeas(e.target.value)}
-                  style={{ padding: "0.4rem", borderRadius: "4px", border: "1px solid #cbd5e1", fontSize: "0.8125rem" }}
-                >
-                  {selectedTable?.columns.map((c) => (
-                    <option key={c.name} value={c.name}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
 
-                <select
-                  value={aggregation}
-                  onChange={(e) => setAggregation(e.target.value as "sum" | "avg" | "count" | "min" | "max")}
-                  style={{ padding: "0.4rem", borderRadius: "4px", border: "1px solid #cbd5e1", fontSize: "0.8125rem" }}
-                >
-                  <option value="sum">Sum</option>
-                  <option value="avg">Average</option>
-                  <option value="count">Count</option>
-                  <option value="min">Min</option>
-                  <option value="max">Max</option>
-                </select>
-              </div>
+              {availableMetrics.length > 0 && (
+                <div style={{ marginBottom: "0.375rem" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.25rem",
+                      fontSize: "0.6875rem",
+                      fontWeight: 700,
+                      color: "var(--mb-color-brand)",
+                      marginBottom: "0.25rem",
+                    }}
+                  >
+                    ★ Saved Metrics
+                  </div>
+                  <select
+                    value={selectedMetricId}
+                    onChange={(e) => {
+                      const nextId = e.target.value;
+                      setSelectedMetricId(nextId);
+                      if (nextId) {
+                        const met = availableMetrics.find((m) => m.id === nextId);
+                        if (met && (title === "New Visual Card" || !title.trim())) {
+                          setTitle(met.name);
+                        }
+                      }
+                    }}
+                    style={{
+                      width: "100%",
+                      padding: "0.4rem",
+                      borderRadius: "4px",
+                      border: selectedMetricId ? "1.5px solid var(--mb-color-brand)" : "1px solid #cbd5e1",
+                      backgroundColor: selectedMetricId ? "rgba(80, 158, 227, 0.06)" : "#ffffff",
+                      fontSize: "0.8125rem",
+                      fontWeight: selectedMetricId ? 600 : 400,
+                      color: selectedMetricId ? "var(--mb-color-brand)" : "#1e293b",
+                    }}
+                  >
+                    <option value="">-- Raw Column Aggregation --</option>
+                    {availableMetrics.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        ★ {m.name} ({m.format_type})
+                      </option>
+                    ))}
+                  </select>
+
+                  {activeMetric && (
+                    <div
+                      style={{
+                        marginTop: "0.3125rem",
+                        fontSize: "0.6875rem",
+                        color: "#64748b",
+                        backgroundColor: "#f8fafc",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: "4px",
+                        padding: "0.3125rem 0.5rem",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "0.5rem",
+                      }}
+                    >
+                      <span style={{ fontFamily: "var(--mb-font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {activeMetric.formula_type === "ratio"
+                          ? `${activeMetric.definition.numerator_agg === "count" ? "count()" : `sum(${String(activeMetric.definition.numerator_column)})`} / ${
+                              activeMetric.definition.denominator_agg === "count"
+                                ? "count()"
+                                : `sum(${String(activeMetric.definition.denominator_column)})`
+                            } × ${Number(activeMetric.definition.multiplier ?? 100)}`
+                          : `${String(activeMetric.definition.aggregation)}(${String(activeMetric.definition.column)})`}
+                      </span>
+                      <span style={{ flexShrink: 0 }}>Format: {activeMetric.format_type}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!selectedMetricId && (
+                <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: "0.375rem" }}>
+                  <select
+                    value={selectedMeas}
+                    onChange={(e) => setSelectedMeas(e.target.value)}
+                    style={{ padding: "0.4rem", borderRadius: "4px", border: "1px solid #cbd5e1", fontSize: "0.8125rem" }}
+                  >
+                    {selectedTable?.columns.map((c) => (
+                      <option key={c.name} value={c.name}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={aggregation}
+                    onChange={(e) => setAggregation(e.target.value as "sum" | "avg" | "count" | "min" | "max")}
+                    style={{ padding: "0.4rem", borderRadius: "4px", border: "1px solid #cbd5e1", fontSize: "0.8125rem" }}
+                  >
+                    <option value="sum">Sum</option>
+                    <option value="avg">Average</option>
+                    <option value="count">Count</option>
+                    <option value="min">Min</option>
+                    <option value="max">Max</option>
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 

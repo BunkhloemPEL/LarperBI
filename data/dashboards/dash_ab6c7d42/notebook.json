@@ -3,28 +3,21 @@
     {
       "id": "cell_1",
       "cell_type": "markdown",
-      "source": "# Exploratory Data Analysis & Transformation\nExplore raw dashboard tables with **Polars**, inspect distributions, and export curated datasets as **Derived Models**.",
+      "source": "### Exploratory Data Analysis & Transformation\nExplore raw dashboard tables with **Polars**, inspect distributions, and export curated datasets as **Derived Models**.",
       "outputs": [],
       "execution_count": null
     },
     {
       "id": "cell_2",
       "cell_type": "code",
-      "source": "# Inspect pre-loaded dataset dimensions\nprint(\"Primary DataFrame Shape:\", df.shape)\nprint(\"Columns:\", df.columns)\ndf.head(5)",
+      "source": "# Inspect pre-loaded dataset dimensions\nprint(\"Primary DataFrame Shape:\", df.shape)\nprint(\"Columns:\", df.columns)",
       "outputs": [],
       "execution_count": null
     },
     {
-      "id": "cell_1793680511780_ddn8",
+      "id": "cell_3",
       "cell_type": "code",
-      "source": "",
-      "outputs": [],
-      "execution_count": null
-    },
-    {
-      "id": "cell_1793680720671_e3pl",
-      "cell_type": "code",
-      "source": "",
+      "source": "# Example: evaluate an expression to view data\ndf.head(5)",
       "outputs": [],
       "execution_count": null
     }

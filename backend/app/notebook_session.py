@@ -239,16 +239,14 @@ def save_notebook(dashboard_id: str, data: Dict[str, Any]):
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
 
-def materialize_derived_table_from_session(
+def _persist_dataframe(
     dashboard_id: str,
     table_name: str,
-    dataframe_var: str
+    target_df: Any,
+    register_in_session: bool = True,
 ) -> TableOut:
-    session = get_kernel_session(dashboard_id)
-    target_df = session.scope.get(dataframe_var)
-
     if target_df is None:
-        raise ValueError(f"DataFrame variable '{dataframe_var}' not found in active notebook kernel.")
+        raise ValueError(f"No DataFrame was produced for table '{table_name}'.")
 
     if not isinstance(target_df, pl.DataFrame):
         try:
@@ -256,9 +254,9 @@ def materialize_derived_table_from_session(
             if isinstance(target_df, pd.DataFrame):
                 target_df = pl.from_pandas(target_df)
             else:
-                raise ValueError(f"Variable '{dataframe_var}' is not a Polars or Pandas DataFrame.")
+                raise ValueError("Result is not a Polars or Pandas DataFrame.")
         except ImportError:
-            raise ValueError(f"Variable '{dataframe_var}' is not a Polars DataFrame.")
+            raise ValueError("Result is not a Polars DataFrame.")
 
     # Save to Parquet
     dash_dir = get_dashboard_dir(dashboard_id)
@@ -274,8 +272,9 @@ def materialize_derived_table_from_session(
     cursor = conn.cursor()
     cursor.execute("""
         INSERT INTO dashboard_tables (
-            id, dashboard_id, display_name, table_type, file_path, row_count, columns_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            id, dashboard_id, display_name, table_type, file_path, row_count, columns_json,
+            origin, role, last_refreshed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'notebook', 'data', CURRENT_TIMESTAMP)
     """, (
         table_id,
         dashboard_id,
@@ -288,8 +287,11 @@ def materialize_derived_table_from_session(
     conn.commit()
     conn.close()
 
-    # Refresh session scope so new table is also available in Python!
-    session.scope[table_name] = target_df
+    if register_in_session:
+        try:
+            get_kernel_session(dashboard_id).scope[table_name] = target_df
+        except Exception:
+            pass
 
     return TableOut(
         id=table_id,
@@ -301,3 +303,56 @@ def materialize_derived_table_from_session(
         columns=columns,
         created_at=str(pl.datetime(2026, 1, 1)),
     )
+
+def materialize_derived_table_from_session(
+    dashboard_id: str,
+    table_name: str,
+    dataframe_var: str
+) -> TableOut:
+    session = get_kernel_session(dashboard_id)
+    target_df = session.scope.get(dataframe_var)
+
+    if target_df is None:
+        raise ValueError(f"DataFrame variable '{dataframe_var}' not found in active notebook kernel.")
+
+    return _persist_dataframe(dashboard_id, table_name, target_df, register_in_session=True)
+
+def materialize_derived_table_from_code(
+    dashboard_id: str,
+    table_name: str,
+    dataframe_var: str,
+    code: str,
+) -> TableOut:
+    """Re-execute a cell's code in a fresh scope so saving survives a lost kernel session."""
+    session = NotebookKernelSession(dashboard_id)
+    stdout = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stdout):
+            tree = ast.parse(code)
+            if tree.body and isinstance(tree.body[-1], ast.Expr):
+                if len(tree.body) > 1:
+                    exec(compile(ast.Module(body=tree.body[:-1], type_ignores=[]), "<cell>", "exec"), session.scope)
+                last_value = eval(compile(ast.Expression(body=tree.body[-1].value), "<cell>", "eval"), session.scope)
+            else:
+                exec(compile(tree, "<cell>", "exec"), session.scope)
+                last_value = None
+    except Exception as exc:
+        raise ValueError(f"Cell code failed: {exc}") from exc
+    finally:
+        plt = session.scope.get("plt")
+        if plt:
+            try:
+                plt.close("all")
+            except Exception:
+                pass
+
+    target_df = session.scope.get(dataframe_var)
+    if target_df is None and last_value is not None and not isinstance(last_value, (int, float, str, bool)):
+        target_df = last_value
+    if target_df is None:
+        raise ValueError(
+            f"Cell code ran, but no variable named '{dataframe_var}' was produced. "
+            "Assign the DataFrame to a variable before saving."
+        )
+
+    return _persist_dataframe(dashboard_id, table_name, target_df, register_in_session=True)

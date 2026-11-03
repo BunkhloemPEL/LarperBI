@@ -1,6 +1,6 @@
 # LarperBI 📊
 
-> **The Self-Service Open-Source BI Studio** — Power BI authoring experience meets Metabase visual aesthetics, Metabase parameter filtering, and VS Code Jupyter Notebook EDA.
+> **The Self-Service Open-Source BI Studio** — Power BI authoring experience meets Metabase visual aesthetics, Metabase parameter filtering, and a stateful in-product Python notebook for EDA.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
@@ -22,7 +22,7 @@ Existing BI tools force a tradeoff:
 1. **Start Blank & Drop Data**: Create a blank dashboard canvas and immediately drag-and-drop CSV or Excel files. No database setup required.
 2. **Metabase Aesthetics**: Replicates Metabase's polished 18-column grid, 8-accent color ramp, typography, and clean card chrome.
 3. **Metabase Parameter Filter Bar**: Dedicated top filter bar with interactive pill triggers, category multi-select popovers, date ranges, and live cross-filtering across all cards.
-4. **VS Code Jupyter Notebook (EDA)**: Cell-based Python notebook with per-cell execution (`In [ ]` / `Out [ ]`), stateful kernel memory, CodeMirror placeholders, execution timers, and one-click model materialization (`[ ⚡ Save as Derived Table ]`).
+4. **Notebook (EDA)**: Cell-based Python notebook styled with LarperBI’s Metabase design tokens — per-cell execution (`In [ ]` / `Out [ ]`), stateful kernel memory, CodeMirror editor with `# Enter Python code` placeholder, execution timers, and one-click model materialization (`[ ⚡ Save as Derived Table ]`).
 5. **Visual Modeling Without SQL**: Drag-and-drop card builder with live ECharts preview, star-schema relationships, and automatic backend join resolution.
 6. **Re-configurable Visual Cards**: Edit any placed card at any time via its header pencil icon, updating charts in place without re-creating.
 
@@ -37,7 +37,7 @@ graph TD
         CanvasView["Canvas View (18-Column Interactive Grid)"]
         ParameterBar["Metabase Parameter Filter Bar (Pill Triggers)"]
         CardBuilder["Visual Card Builder (Modal with Live Preview)"]
-        JupyterNotebook["VS Code Jupyter Notebook (Stateful Cells)"]
+        JupyterNotebook["LarperBI Notebook (Stateful Cells)"]
         ModelView["Data Model & Relationships View (Star Schema)"]
         VizComponents["14 Metabase Visual Components"]
         
@@ -92,8 +92,8 @@ Fully re-engineered using **Apache ECharts 6.x** and **Mantine / CSS design toke
 - **`PivotTable`**: Multi-dimensional matrix with sticky headers and cell heatmap background tinting.
 - **`TableInteractive`**: Built on `@tanstack/react-table` with sortable headers, tabular numbers, and status badges.
 
-### 3. VS Code Jupyter Notebook (EDA Environment)
-- **Cell Structure**: Discrete Code and Markdown cells with `In [ 1 ]:` and `Out [ 1 ]:` indicators.
+### 3. LarperBI Notebook (EDA Environment)
+- **Cell Structure**: Discrete Code and Markdown cells in LarperBI-themed cards (Inter typography, brand-blue active border, soft shadows) with `In [ 1 ]` / `Out [ 1 ]` indicators.
 - **Left Gutter Play Button (`▶`)**: Direct execution with execution timers (`✓ 0.1ms`).
 - **Hover Cell Divider**: Hover between cells to insert `[ + Code ]` or `[ + Markdown ]` anywhere.
 - **Native Placeholder**: Newly added code cells mount with an empty buffer and a clean `# Enter Python code` placeholder that disappears automatically on typing.
@@ -112,16 +112,36 @@ Fully re-engineered using **Apache ECharts 6.x** and **Mantine / CSS design toke
 - Pre-populated fields in Edit Mode: modify chart type, swap dimensions, adjust aggregations, or rename titles.
 - Sub-20ms interactive preview renders live in the modal before committing changes.
 
-### 6. Data Model & Star Schema (Auto-Joins)
-- Visual **Data Model** tab displaying all tables, schema definitions, row counts, and data types.
-- Link foreign keys to primary keys (e.g. `transactions.card_id` $\to$ `cards.id`).
-- When querying `transactions`, columns from `cards` become available automatically via backend join generation without writing SQL.
+### 6. Data Modeling: New Tables, Columns, Star Schema & Saved Metrics
+- **New Derived Table (Aggregation)**: Click **`+ New Derived Table`** to build a group-by + measure aggregation into a new first-class Parquet table — no SQL required.
+- **New Empty Table (Manual)**: Click **`+ New Empty Table`** to declare a schema (name + type per column) and create a zero-row table. Fill or transform it later with a Python script.
+- **New Python Table (Scripted)**: Click **`+ New Python Table`** to define a table by code. Tables are pre-loaded as Polars DataFrames (`df` = first table); assign the output to `result` (Polars or pandas, including numpy values wrapped in a DataFrame). Scripts are stored, and **Refresh** re-executes them.
+- **Script & Refresh existing tables**: Every table card has a **Script** button. Editing a script runs it against the table's current snapshot, so you can extend or transform existing data. Failed runs never overwrite the last good snapshot.
+- **Helper (Independent) Tables**: Set the role to `helper` for standalone lookup/sort/manual tables. They show a **Helper · Independent** badge and are excluded from derived-table base pickers, so they never entangle the data model.
+- **New Column (Calculated Column)**: Click **`+ Column`** on any table card to append a row-level computed column (e.g. `credit_limit / num_cards_issued`, `amount * quantity`) using a safe expression parser (`+ - * / % **`, `abs(x)`, `round(x, n)`).
+- **Tables & Relationships**: Visual **Data Model** tab listing every table, schema definitions, row counts, and data types. Link foreign keys to primary keys (e.g. `transactions.card_id` $\to$ `cards.id`); columns from linked tables become queryable automatically via backend join generation without writing SQL.
+- **Drag-to-Link Keys (Power BI style)**: Drag any column onto another table's column to create the relationship — a live dashed connector follows the pointer and the target column highlights on hover. Key columns are marked with a gold key icon. Self-links, unknown columns, and duplicate relationships are rejected with clear errors.
+- **Saved Metrics (Measures)**: Dedicated **★ Saved Metrics** sub-tab for reusable calculation recipes — not table columns:
+  - **Simple Aggregation**: `sum(credit_limit)`, `avg(amount)`, `count_distinct(card_id)`, `min`, `max`.
+  - **Ratio / Rate**: `sum(is_fraud) / count() × 100` with configurable multiplier (100 for percentages).
+  - **Display Format**: Currency, Percentage, or Number, applied automatically to every card using the metric.
+  - Metrics appear as **★ Saved Metrics** in the Card Builder Y-Axis picker and are evaluated dynamically against whatever dimensions and dashboard filters are active. Editing a card pre-selects its saved metric.
+
 
 ### 7. Interactive 18-Column Grid & Focus Mode
 - Freeform card dragging and resizing with collision reflow powered by `react-grid-layout`.
 - 40px corner bracket resize handles.
 - **Full Dynamic Chart Scaling**: Charts expand in real time to fill resized cards.
 - **Focus / Zoom Mode**: Click the **Maximize** button (`Maximize2`) in the card header to expand any visual into an 80vh full-screen focus view.
+
+### 8. Data View (Excel-Style Row Browser, LarperBI Theme)
+- Excel / Power BI Data view / VS Code Data Wrangler–style grid for any dashboard table, styled with LarperBI’s Metabase tokens: one cohesive card containing toolbar → grid → attached status/pager → sheet tabs, filling the viewport.
+- **Sheet tabs**: tables appear as tabs attached to the card bottom (helper tables marked with a dot); click to switch.
+- **Header autofilters**: every column has a dropdown menu with **Sort Ascending / Descending**, a **value search box**, and a **class checklist** (Select All / Clear / Apply). Filtered columns show a brand-blue funnel icon; a toolbar button clears all filters at once.
+- **Server-side filtering**: value selections are applied in Polars (`cast(String).is_in([...])`), with filtered vs. unfiltered counts.
+- **Server-side paging**: 25 / 50 / 100 / 250 rows per page (max 500) — never loads the whole table.
+- **Global search** across all columns (debounced, case-insensitive), sticky headers, and first / prev / next / last paging.
+- Numeric columns right-aligned with tabular figures; nulls render as muted `null`.
 
 ---
 
@@ -208,7 +228,7 @@ LarperBI/
     │   │   ├── DashboardCanvas/   # Canvas view, card renderer, and dropzone
     │   │   ├── DashboardManager/  # Home screen dashboard gallery & creator
     │   │   ├── ModelView/         # Star schema relationship builder
-    │   │   ├── Notebook/          # VS Code style cell-based Jupyter Notebook
+    │   │   ├── Notebook/          # LarperBI-themed cell-based Python notebook
     │   │   ├── parameters/        # Metabase parameter filter bar & popover widgets
     │   │   ├── grid/              # 18-column grid layout wrapper & resize handles
     │   │   └── metabase-viz/      # 14 Replicated Metabase visual components
@@ -239,11 +259,21 @@ LarperBI/
 | `POST` | `/api/v1/dashboards/{id}/filters` | Add a new filter parameter |
 | `DELETE` | `/api/v1/dashboards/{id}/filters/{filter_id}` | Remove a filter parameter |
 | `GET` | `/api/v1/dashboards/{id}/tables/{table_id}/columns/{col}/distinct` | Fetch distinct values for category filter popover |
+| `GET` | `/api/v1/dashboards/{id}/tables/{table_id}/rows` | Paginated row browser (search, sort, page size, per-column value filters) |
+| `GET` | `/api/v1/dashboards/{id}/metrics` | List saved metrics (measures) for the dashboard |
+| `POST` | `/api/v1/dashboards/{id}/metrics` | Define a new simple-aggregation or ratio metric |
+| `DELETE` | `/api/v1/dashboards/{id}/metrics/{metric_id}` | Delete a saved metric |
 | `GET` | `/api/v1/dashboards/{id}/notebook` | Load dashboard Jupyter Notebook state |
 | `PUT` | `/api/v1/dashboards/{id}/notebook` | Persist dashboard Jupyter Notebook state |
 | `POST` | `/api/v1/dashboards/{id}/notebook/execute-cell` | Execute a cell in the persistent kernel session |
 | `POST` | `/api/v1/dashboards/{id}/notebook/restart` | Restart the Python kernel session |
 | `POST` | `/api/v1/dashboards/{id}/derived-tables` | Materialize DataFrame as a derived dashboard table |
+| `POST` | `/api/v1/dashboards/{id}/derived-tables/aggregate` | Build an aggregated derived table (group-by + measure) |
+| `POST` | `/api/v1/dashboards/{id}/tables/{table_id}/calculated-column` | Append a row-level calculated column to a table |
+| `POST` | `/api/v1/dashboards/{id}/tables/empty` | Create a zero-row manual table from a declared schema |
+| `POST` | `/api/v1/dashboards/{id}/tables/python` | Create a Python-scripted table from a `result` DataFrame |
+| `PUT` | `/api/v1/dashboards/{id}/tables/{table_id}/script` | Save and run a table script (replaces the snapshot on success) |
+| `POST` | `/api/v1/dashboards/{id}/tables/{table_id}/refresh` | Re-run a table's stored script and refresh its snapshot |
 | `POST` | `/api/v1/dashboards/{id}/relationships` | Link foreign key relationship between tables |
 | `POST` | `/api/v1/dashboards/{id}/query` | Execute aggregation query for visual cards (with auto-joins & filters) |
 | `POST` | `/api/v1/dashboards/{id}/cards` | Add visual card to dashboard canvas |

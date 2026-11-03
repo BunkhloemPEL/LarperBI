@@ -11,11 +11,20 @@ export interface TableItem {
   id: string;
   dashboard_id: string;
   display_name: string;
-  table_type: "raw_upload" | "derived_python";
+  table_type: "raw_upload" | "derived_python" | "derived_model" | "python_script" | "manual";
   file_path: string;
   row_count: number;
   columns: ColumnMetadata[];
   created_at: string;
+  origin?: "upload" | "notebook" | "derived" | "python_script" | "manual";
+  role?: "data" | "helper";
+  script?: string | null;
+  inputs?: string[];
+  last_refreshed_at?: string | null;
+  pos_x?: number | null;
+  pos_y?: number | null;
+  pos_w?: number | null;
+  pos_h?: number | null;
 }
 
 export interface DashboardItem {
@@ -48,8 +57,9 @@ export interface GridLayout {
 }
 
 export interface MeasureSpec {
-  column: string;
-  aggregation: "sum" | "avg" | "count" | "min" | "max";
+  column?: string;
+  aggregation?: "sum" | "avg" | "count" | "min" | "max";
+  metric_id?: string;
   alias?: string;
 }
 
@@ -106,6 +116,20 @@ export interface NotebookData {
   cells: NotebookCellItem[];
 }
 
+export interface TableRowsResponse {
+  table_id: string;
+  columns: ColumnMetadata[];
+  rows: Record<string, string | number | boolean | null>[];
+  total_count: number;
+  unfiltered_count: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  sort_column?: string | null;
+  sort_dir: "asc" | "desc";
+  search?: string | null;
+}
+
 export interface FilterItem {
   id: string;
   dashboard_id: string;
@@ -125,12 +149,25 @@ export interface ActiveFilterState {
   };
 }
 
+export interface MetricItem {
+  id: string;
+  dashboard_id: string;
+  table_id: string;
+  name: string;
+  description?: string;
+  formula_type: "simple_agg" | "ratio";
+  definition: Record<string, unknown>;
+  format_type: "currency" | "percentage" | "number";
+  created_at: string;
+}
+
 export interface DashboardDetail {
   dashboard: DashboardItem;
   tables: TableItem[];
   cards: CardItem[];
   relationships: RelationshipItem[];
   filters: FilterItem[];
+  metrics: MetricItem[];
 }
 
 export interface PythonExecuteResponse {

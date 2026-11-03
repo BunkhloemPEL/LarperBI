@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import { UploadCloud, Plus, FileSpreadsheet, LayoutGrid, Move, Check } from "lucide-react";
 import { uploadTable, deleteCard, updateDashboardLayout } from "../../services/api";
-import type { TableItem, CardItem, FilterItem } from "../../types/larper";
+import type { TableItem, CardItem, FilterItem, MetricItem } from "../../types/larper";
 import { ParameterBar } from "../parameters/ParameterBar";
 import { CanvasCardRenderer } from "./CanvasCardRenderer";
 import { CardBuilderModal } from "../CardBuilder/CardBuilderModal";
@@ -13,6 +13,7 @@ export interface CanvasViewProps {
   tables: TableItem[];
   cards: CardItem[];
   filters: FilterItem[];
+  metrics: MetricItem[];
   onRefresh: () => void;
 }
 export const CanvasView: React.FC<CanvasViewProps> = ({
@@ -20,6 +21,7 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
   tables,
   cards,
   filters,
+  metrics,
   onRefresh,
 }) => {
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -348,6 +350,7 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
       <CardBuilderModal
         dashboardId={dashboardId}
         tables={tables}
+        metrics={metrics}
         isOpen={isBuilderOpen}
         onClose={() => {
           setIsBuilderOpen(false);

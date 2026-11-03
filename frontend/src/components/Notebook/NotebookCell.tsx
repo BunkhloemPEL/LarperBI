@@ -25,7 +25,7 @@ export interface NotebookCellProps {
   onDeleteCell: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
-  onSaveDerivedTable: (varName: string) => void;
+  onSaveDerivedTable: (varName: string, source: string) => void;
   onTypeChange: (newType: "code" | "markdown") => void;
 }
 
@@ -42,7 +42,9 @@ export const NotebookCell: React.FC<NotebookCellProps> = ({
   onSaveDerivedTable,
   onTypeChange,
 }) => {
-  const [isEditingMarkdown, setIsEditingMarkdown] = useState<boolean>(cell.cell_type === "markdown" && !cell.source.trim());
+  const [isEditingMarkdown, setIsEditingMarkdown] = useState<boolean>(
+    cell.cell_type === "markdown" && !cell.source.trim()
+  );
 
   const durationStr =
     typeof cell.duration_ms === "number"
@@ -56,7 +58,7 @@ export const NotebookCell: React.FC<NotebookCellProps> = ({
       className={`${styles.cellCard} ${isActive ? styles.cellFocused : ""}`}
       onClick={onFocus}
     >
-      {/* Left Gutter: Run Button & Execution Status (VS Code Style) */}
+      {/* Left gutter: run + execution status */}
       <div className={styles.leftGutter}>
         {cell.cell_type === "code" ? (
           <>
@@ -68,7 +70,10 @@ export const NotebookCell: React.FC<NotebookCellProps> = ({
               className={styles.playBtn}
             >
               {isExecuting ? (
-                <RotateCw size={12} className="spin" style={{ animation: "spin 1s linear infinite" }} />
+                <RotateCw
+                  size={12}
+                  style={{ animation: "spin 1s linear infinite" }}
+                />
               ) : (
                 <Play size={11} fill="currentColor" />
               )}
@@ -76,76 +81,58 @@ export const NotebookCell: React.FC<NotebookCellProps> = ({
 
             <div className={styles.execStatus}>
               {cell.execution_count !== undefined && cell.execution_count !== null && (
-                <span className={styles.executionCountText}>[{cell.execution_count}]</span>
+                <span className={styles.execPill}>In [{cell.execution_count}]</span>
               )}
               {durationStr && !isExecuting && (
                 <span className={styles.durationBadge} title={`Execution duration: ${durationStr}`}>
-                  <Check size={10} strokeWidth={3} />
+                  <Check size={9} strokeWidth={3} />
                   {durationStr}
                 </span>
               )}
             </div>
           </>
         ) : (
-          <div style={{ color: "#94a3b8", fontSize: "0.6875rem", fontWeight: 700 }}>
+          <span style={{ color: "var(--mb-color-text-subtle)", fontSize: "0.625rem", fontWeight: 700 }}>
             MD
-          </div>
+          </span>
         )}
       </div>
 
-      {/* Center Body: Top Bar, Editor, Outputs */}
+      {/* Cell body */}
       <div className={styles.cellBody}>
-        {/* Top Mini Bar with Cell Actions */}
         <div className={styles.cellTopBar}>
+          <span className={styles.cellTypeLabel}>
+            {cell.cell_type === "code" ? "Python" : "Markdown"}
+          </span>
 
           <div className={styles.cellActions}>
             <select
+              className={styles.cellTypeSelect}
               value={cell.cell_type}
               onChange={(e) => onTypeChange(e.target.value as "code" | "markdown")}
-              style={{
-                fontSize: "0.6875rem",
-                padding: "0.15rem 0.35rem",
-                borderRadius: "3px",
-                border: "1px solid #cbd5e1",
-                background: "#ffffff",
-                color: "#475569",
-              }}
+              title="Change cell type"
             >
               <option value="code">Code</option>
               <option value="markdown">Markdown</option>
             </select>
 
-            <button
-              type="button"
-              onClick={onMoveUp}
-              title="Move Cell Up"
-              className={styles.cellActionBtn}
-            >
+            <button type="button" onClick={onMoveUp} title="Move Cell Up" className={styles.cellActionBtn}>
               <ChevronUp size={13} />
             </button>
-
-            <button
-              type="button"
-              onClick={onMoveDown}
-              title="Move Cell Down"
-              className={styles.cellActionBtn}
-            >
+            <button type="button" onClick={onMoveDown} title="Move Cell Down" className={styles.cellActionBtn}>
               <ChevronDown size={13} />
             </button>
-
             <button
               type="button"
               onClick={onDeleteCell}
               title="Delete Cell"
-              className={styles.cellActionBtn}
-              style={{ color: "#ef4444" }}
+              className={`${styles.cellActionBtn} ${styles.cellActionBtnDanger}`}
             >
               <Trash2 size={13} />
             </button>
           </div>
         </div>
 
-        {/* Editor Area */}
         {cell.cell_type === "code" ? (
           <div
             className={styles.editorContainer}
@@ -156,21 +143,23 @@ export const NotebookCell: React.FC<NotebookCellProps> = ({
               }
             }}
           >
-            <CodeMirror
-              value={cell.source}
-              placeholder="# Enter Python code"
-              extensions={[python()]}
-              onChange={onSourceChange}
-              theme={vscodeLight}
-              autoFocus={isActive}
-              basicSetup={{
-                lineNumbers: true,
-                highlightActiveLineGutter: true,
-                bracketMatching: true,
-                autocompletion: true,
-                foldGutter: false,
-              }}
-            />
+            <div className={styles.editorBox}>
+              <CodeMirror
+                value={cell.source}
+                placeholder="# Enter Python code"
+                extensions={[python()]}
+                onChange={onSourceChange}
+                theme={vscodeLight}
+                autoFocus={isActive}
+                basicSetup={{
+                  lineNumbers: true,
+                  highlightActiveLineGutter: true,
+                  bracketMatching: true,
+                  autocompletion: true,
+                  foldGutter: false,
+                }}
+              />
+            </div>
           </div>
         ) : isEditingMarkdown ? (
           <div
@@ -183,22 +172,12 @@ export const NotebookCell: React.FC<NotebookCellProps> = ({
             }}
           >
             <textarea
+              className={styles.markdownEditor}
               value={cell.source}
               placeholder="Type Markdown notes..."
               onChange={(e) => onSourceChange(e.target.value)}
               onBlur={() => setIsEditingMarkdown(false)}
               autoFocus
-              style={{
-                width: "100%",
-                minHeight: "70px",
-                padding: "0.5rem",
-                border: "1px solid #cbd5e1",
-                borderRadius: "4px",
-                outline: "none",
-                fontFamily: "var(--mb-font-sans)",
-                fontSize: "0.875rem",
-                resize: "vertical",
-              }}
             />
           </div>
         ) : (
@@ -213,47 +192,42 @@ export const NotebookCell: React.FC<NotebookCellProps> = ({
           </div>
         )}
 
-        {/* Cell Output Area (Directly underneath) */}
         {cell.outputs && cell.outputs.length > 0 && (
           <div className={styles.cellOutputs}>
             {cell.outputs.map((out, oIdx) => (
               <div key={oIdx} style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {/* Standard Output (stdout/stderr) */}
-                {out.text && (
-                  <pre className={styles.stdoutBox}>{out.text}</pre>
-                )}
+                {out.text && <pre className={styles.stdoutBox}>{out.text}</pre>}
 
-                {/* Expression Return Value (e.g. 84 or tuples) */}
                 {out.result_text && (
                   <pre className={styles.resultBox}>
-                    <span style={{ color: "#d84315", fontWeight: 700, marginRight: "8px" }}>
-                      Out [{cell.execution_count}]:
-                    </span>
+                    <span className={styles.resultLabel}>Out [{cell.execution_count}]:</span>
                     {out.result_text}
                   </pre>
                 )}
 
-                {/* Error Traceback Callout */}
                 {out.error && (
                   <div className={styles.errorBox}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontWeight: 700, marginBottom: "0.25rem" }}>
-                      <AlertTriangle size={14} /> Execution Error
+                    <div className={styles.errorTitle}>
+                      <AlertTriangle size={13} /> Execution Error
                     </div>
                     {out.error}
                   </div>
                 )}
 
-                {/* Interactive DataFrame Table (ONLY when cell evaluated to a DataFrame!) */}
                 {out.table_preview && (
                   <div className={styles.dataViewer}>
                     <div className={styles.dataViewerHeader}>
-                      <span style={{ fontWeight: 600, color: "#334155" }}>
-                        DataFrame: <code style={{ color: "#0078d4" }}>{out.table_preview.var_name}</code> ({out.table_preview.row_count.toLocaleString()} rows, {out.table_preview.columns.length} columns)
+                      <span>
+                        DataFrame:{" "}
+                        <code style={{ color: "var(--mb-color-brand)" }}>{out.table_preview.var_name}</code>{" "}
+                        ({out.table_preview.row_count.toLocaleString()} rows,{" "}
+                        {out.table_preview.columns.length} columns)
                       </span>
-
                       <button
                         type="button"
-                        onClick={() => onSaveDerivedTable(out.table_preview?.var_name || "df_summary")}
+                        onClick={() =>
+                          onSaveDerivedTable(out.table_preview?.var_name || "df_summary", cell.source)
+                        }
                         className={styles.saveDerivedBtn}
                         title="Materialize this DataFrame as a first-class table in the dashboard catalog"
                       >
@@ -266,7 +240,7 @@ export const NotebookCell: React.FC<NotebookCellProps> = ({
                       <table className={styles.dataViewerTable}>
                         <thead>
                           <tr>
-                            <th style={{ width: "40px", color: "#94a3b8" }}>#</th>
+                            <th style={{ width: "36px", color: "var(--mb-color-text-subtle)" }}>#</th>
                             {out.table_preview.columns.map((col) => (
                               <th key={col}>{col}</th>
                             ))}
@@ -275,7 +249,9 @@ export const NotebookCell: React.FC<NotebookCellProps> = ({
                         <tbody>
                           {out.table_preview.rows.map((row, rIdx) => (
                             <tr key={rIdx}>
-                              <td style={{ color: "#94a3b8", fontSize: "0.6875rem" }}>{rIdx}</td>
+                              <td style={{ color: "var(--mb-color-text-subtle)", fontSize: "0.625rem" }}>
+                                {rIdx}
+                              </td>
                               {row.map((val, cIdx) => (
                                 <td key={cIdx}>{String(val)}</td>
                               ))}
@@ -287,18 +263,16 @@ export const NotebookCell: React.FC<NotebookCellProps> = ({
                   </div>
                 )}
 
-                {/* Matplotlib Inline Plot Output */}
                 {out.plot_base64 && (
-                  <div style={{ padding: "0.5rem 0" }}>
+                  <div style={{ padding: "0.25rem 0" }}>
                     <img
                       src={`data:image/png;base64,${out.plot_base64}`}
                       alt="Inline Matplotlib Plot"
                       style={{
                         maxWidth: "100%",
                         maxHeight: "420px",
-                        borderRadius: "4px",
-                        border: "1px solid #e2e8f0",
-                        boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                        borderRadius: "6px",
+                        border: "1px solid var(--mb-color-border-card)",
                       }}
                     />
                   </div>

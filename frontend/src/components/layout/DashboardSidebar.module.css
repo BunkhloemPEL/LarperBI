@@ -1,0 +1,112 @@
+/* Power BI style icon rail */
+.rail {
+  width: 76px;
+  flex: 0 0 76px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 0;
+  background-color: #ffffff;
+  border-right: 1px solid var(--mb-color-border-card);
+  position: sticky;
+  top: 57px;
+  height: calc(100vh - 57px);
+  overflow-y: auto;
+  z-index: 15;
+}
+
+.item {
+  position: relative;
+  width: 60px;
+  min-height: 58px;
+  padding: 6px 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--mb-color-text-muted);
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.item:hover {
+  background-color: var(--mb-color-bg-subtle);
+  color: var(--mb-color-text-primary);
+}
+
+.item:focus-visible {
+  outline: 2px solid var(--mb-color-brand);
+  outline-offset: 2px;
+}
+
+.active {
+  background-color: rgba(80, 158, 227, 0.1);
+  color: var(--mb-color-brand);
+}
+
+.active::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 26px;
+  border-radius: 2px;
+  background-color: var(--mb-color-brand);
+}
+
+.label {
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1;
+}
+
+.badge {
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 9999px;
+  background-color: #e2e8f0;
+  color: #475569;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
+.badgeActive {
+  background-color: var(--mb-color-brand);
+  color: #ffffff;
+}
+
+.divider {
+  width: 36px;
+  height: 1px;
+  background-color: var(--mb-color-border-subtle);
+  margin: 6px 0;
+}
+
+@media (max-width: 720px) {
+  .rail {
+    width: 56px;
+    flex-basis: 56px;
+  }
+
+  .item {
+    width: 44px;
+  }
+
+  .label {
+    display: none;
+  }
+}

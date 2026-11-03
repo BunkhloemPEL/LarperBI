@@ -5,6 +5,8 @@ import type {
   CardConfig,
   RelationshipItem,
   FilterItem,
+  MetricItem,
+  TableRowsResponse,
   NotebookData,
   PythonExecuteResponse,
   QueryResult,
@@ -90,13 +92,160 @@ export async function executePythonSandbox(dashboardId: string, code: string): P
   return res.json();
 }
 
+async function errorMessage(res: Response, fallback: string): Promise<string> {
+  try {
+    const text = await res.text();
+    if (!text) return fallback;
+    try {
+      const parsed = JSON.parse(text);
+      return typeof parsed.detail === "string" ? parsed.detail : text;
+    } catch {
+      return text;
+    }
+  } catch {
+    return fallback;
+  }
+}
+
 export async function saveDerivedTable(dashboardId: string, tableName: string, dataframeVar: string, code?: string): Promise<TableItem> {
   const res = await fetch(`${API_BASE_URL}/api/v1/dashboards/${dashboardId}/derived-tables`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: jsonStringify({ table_name: tableName, dataframe_var: dataframeVar, code }),
   });
-  if (!res.ok) throw new Error("Failed to save derived table");
+  if (!res.ok) throw new Error(await errorMessage(res, "Failed to save derived table"));
+  return res.json();
+}
+
+export async function fetchTableRows(
+  dashboardId: string,
+  tableId: string,
+  params: {
+    page?: number;
+    pageSize?: number;
+    search?: string;
+    sortColumn?: string | null;
+    sortDir?: "asc" | "desc";
+    filters?: { column: string; values: string[] }[];
+  } = {}
+): Promise<TableRowsResponse> {
+  const q = new URLSearchParams();
+  q.set("page", String(params.page ?? 1));
+  q.set("page_size", String(params.pageSize ?? 50));
+  if (params.search) q.set("search", params.search);
+  if (params.sortColumn) q.set("sort_column", params.sortColumn);
+  if (params.sortDir) q.set("sort_dir", params.sortDir);
+  if (params.filters && params.filters.length > 0) {
+    q.set("filters", JSON.stringify(params.filters));
+  }
+
+  const res = await fetch(
+    `${API_BASE_URL}/api/v1/dashboards/${dashboardId}/tables/${tableId}/rows?${q.toString()}`
+  );
+  if (!res.ok) throw new Error(await errorMessage(res, "Failed to load table rows"));
+  return res.json();
+}
+
+export async function updateModelLayout(
+  dashboardId: string,
+  layout: { table_id: string; x: number; y: number; w: number; h: number }[]
+): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboards/${dashboardId}/model-layout`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: jsonStringify(layout),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, "Failed to save model layout"));
+}
+
+export async function createEmptyTable(
+  dashboardId: string,
+  payload: {
+    display_name: string;
+    columns: { name: string; dtype: string }[];
+    role: "data" | "helper";
+  }
+): Promise<TableItem> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboards/${dashboardId}/tables/empty`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: jsonStringify(payload),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, "Failed to create empty table"));
+  return res.json();
+}
+
+export async function createPythonTable(
+  dashboardId: string,
+  payload: {
+    display_name: string;
+    script: string;
+    inputs?: string[];
+    role: "data" | "helper";
+  }
+): Promise<TableItem> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboards/${dashboardId}/tables/python`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: jsonStringify(payload),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, "Failed to create Python table"));
+  return res.json();
+}
+
+export async function refreshTable(dashboardId: string, tableId: string): Promise<TableItem> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboards/${dashboardId}/tables/${tableId}/refresh`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, "Failed to refresh table"));
+  return res.json();
+}
+
+export async function updateTableScript(
+  dashboardId: string,
+  tableId: string,
+  payload: { script: string; inputs?: string[]; role?: "data" | "helper" }
+): Promise<TableItem> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboards/${dashboardId}/tables/${tableId}/script`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: jsonStringify(payload),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, "Failed to update table script"));
+  return res.json();
+}
+
+export async function addCalculatedColumn(
+  dashboardId: string,
+  tableId: string,
+  name: string,
+  expression: string
+): Promise<TableItem> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboards/${dashboardId}/tables/${tableId}/calculated-column`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: jsonStringify({ name, expression }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, "Failed to add calculated column"));
+  return res.json();
+}
+
+export async function createAggregatedTable(
+  dashboardId: string,
+  payload: {
+    base_table_id: string;
+    display_name: string;
+    dimensions: string[];
+    measures: { column: string; aggregation: string; alias?: string }[];
+    filters?: Record<string, unknown>[];
+  }
+): Promise<TableItem> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboards/${dashboardId}/derived-tables/aggregate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: jsonStringify(payload),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, "Failed to create aggregated table"));
   return res.json();
 }
 
@@ -254,6 +403,37 @@ export async function restartKernel(dashboardId: string): Promise<void> {
   });
   if (!res.ok) throw new Error("Failed to restart kernel");
 }
+
+export async function fetchDashboardMetrics(dashboardId: string): Promise<MetricItem[]> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboards/${dashboardId}/metrics`);
+  if (!res.ok) throw new Error("Failed to fetch metrics");
+  return res.json();
+}
+
+export async function createDashboardMetric(dashboardId: string, metric: {
+  table_id: string;
+  name: string;
+  description?: string;
+  formula_type: string;
+  definition: Record<string, unknown>;
+  format_type: string;
+}): Promise<MetricItem> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboards/${dashboardId}/metrics`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: jsonStringify(metric),
+  });
+  if (!res.ok) throw new Error("Failed to create metric");
+  return res.json();
+}
+
+export async function deleteDashboardMetric(dashboardId: string, metricId: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboards/${dashboardId}/metrics/${metricId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to delete metric");
+}
+
 function jsonStringify(obj: unknown): string {
   return JSON.stringify(obj);
 }

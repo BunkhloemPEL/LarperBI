@@ -8,7 +8,7 @@ import {
   Code,
   Database,
   Check,
-  Cpu,
+  Terminal,
   Eraser,
 } from "lucide-react";
 import styles from "./Notebook.module.css";
@@ -73,6 +73,7 @@ export const JupyterNotebook: React.FC<JupyterNotebookProps> = ({
   // Materialize derived table state
   const [showSaveModal, setShowSaveModal] = useState<boolean>(false);
   const [targetVarName, setTargetVarName] = useState<string>("");
+  const [targetVarCode, setTargetVarCode] = useState<string>("");
   const [derivedTableName, setDerivedTableName] = useState<string>("");
   const [isSavingTable, setIsSavingTable] = useState<boolean>(false);
 
@@ -246,8 +247,9 @@ export const JupyterNotebook: React.FC<JupyterNotebookProps> = ({
   };
 
   // Materialize Derived Table
-  const handleOpenDerivedModal = (varName: string) => {
+  const handleOpenDerivedModal = (varName: string, source: string) => {
     setTargetVarName(varName);
+    setTargetVarCode(source || "");
     setDerivedTableName(`${varName}_summary`);
     setShowSaveModal(true);
   };
@@ -256,7 +258,7 @@ export const JupyterNotebook: React.FC<JupyterNotebookProps> = ({
     if (!derivedTableName.trim() || !targetVarName) return;
     setIsSavingTable(true);
     try {
-      await saveDerivedTable(dashboardId, derivedTableName.trim(), targetVarName);
+      await saveDerivedTable(dashboardId, derivedTableName.trim(), targetVarName, targetVarCode || undefined);
       setSaveStatus(`Table '${derivedTableName}' materialized successfully!`);
       setShowSaveModal(false);
       onTableCreated();
@@ -270,8 +272,18 @@ export const JupyterNotebook: React.FC<JupyterNotebookProps> = ({
 
   return (
     <div className={styles.notebookContainer}>
-      {/* Top VS Code Style Toolbar */}
+      {/* Notebook header toolbar */}
       <div className={styles.notebookToolbar}>
+        <div className={styles.notebookTitleBlock}>
+          <div className={styles.notebookTitle}>
+            <Terminal size={14} color="var(--mb-color-brand)" />
+            Notebook
+          </div>
+          <div className={styles.notebookSubtitle}>
+            Python 3.9+ · Polars · {tables.length} table{tables.length === 1 ? "" : "s"} loaded
+          </div>
+        </div>
+
         <div className={styles.toolbarGroup}>
           <button
             type="button"
@@ -279,8 +291,7 @@ export const JupyterNotebook: React.FC<JupyterNotebookProps> = ({
             className={styles.toolBtn}
             title="Add a new Code cell"
           >
-            <Plus size={13} color="#0078d4" />
-            <Code size={13} />
+            <Code size={12} />
             Code
           </button>
 
@@ -290,8 +301,7 @@ export const JupyterNotebook: React.FC<JupyterNotebookProps> = ({
             className={styles.toolBtn}
             title="Add a new Markdown text cell"
           >
-            <Plus size={13} color="#0078d4" />
-            <Type size={13} />
+            <Type size={12} />
             Markdown
           </button>
 
@@ -302,8 +312,8 @@ export const JupyterNotebook: React.FC<JupyterNotebookProps> = ({
             className={`${styles.toolBtn} ${styles.toolBtnPrimary}`}
             title="Run active cell (Shift+Enter)"
           >
-            <Play size={11} fill="#ffffff" />
-            Run (Shift+Enter)
+            <Play size={10} fill="#ffffff" />
+            Run
           </button>
 
           <button
@@ -313,7 +323,7 @@ export const JupyterNotebook: React.FC<JupyterNotebookProps> = ({
             className={styles.toolBtn}
             title="Run all notebook cells sequentially"
           >
-            <Play size={11} fill="currentColor" />
+            <Play size={10} fill="currentColor" />
             Run All
           </button>
 
@@ -323,8 +333,8 @@ export const JupyterNotebook: React.FC<JupyterNotebookProps> = ({
             className={styles.toolBtn}
             title="Clear all cell outputs"
           >
-            <Eraser size={12} />
-            Clear Outputs
+            <Eraser size={11} />
+            Clear
           </button>
 
           <button
@@ -334,7 +344,7 @@ export const JupyterNotebook: React.FC<JupyterNotebookProps> = ({
             className={styles.toolBtn}
             title="Restart Python kernel and clear variables"
           >
-            <RotateCcw size={12} />
+            <RotateCcw size={11} />
             Restart
           </button>
 
@@ -348,57 +358,30 @@ export const JupyterNotebook: React.FC<JupyterNotebookProps> = ({
             className={styles.toolBtn}
             title="Save notebook changes"
           >
-            <Save size={12} />
+            <Save size={11} />
             Save
           </button>
         </div>
 
-        {/* Kernel Status Badge & Pre-loaded Tables */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        {/* Kernel status, loaded tables, save confirmation */}
+        <div className={styles.notebookStatus}>
           {saveStatus && (
-            <span style={{ fontSize: "0.75rem", color: "var(--mb-color-success)", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.25rem" }}>
+            <span className={styles.saveStatus}>
               <Check size={12} /> {saveStatus}
             </span>
           )}
 
-          <div
-            style={{
-              fontSize: "0.6875rem",
-              backgroundColor: isKernelBusy ? "rgba(249, 212, 92, 0.2)" : "rgba(136, 191, 77, 0.12)",
-              color: isKernelBusy ? "#b45309" : "var(--mb-color-success)",
-              fontWeight: 700,
-              padding: "0.15rem 0.5rem",
-              borderRadius: "9999px",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "0.3rem",
-            }}
-          >
-            <Cpu size={12} />
-            {isKernelBusy ? "Kernel: Busy..." : "Python 3.9+ / Polars (Active Kernel)"}
-          </div>
+          <span className={styles.kernelBadge}>
+            <span className={`${styles.kernelDot} ${isKernelBusy ? styles.kernelDotBusy : ""}`} />
+            {isKernelBusy ? "Kernel: busy" : "Kernel: idle"}
+          </span>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
-            {tables.map((t) => (
-              <span
-                key={t.id}
-                style={{
-                  fontSize: "0.6875rem",
-                  backgroundColor: "#f1f5f9",
-                  color: "#475569",
-                  fontWeight: 600,
-                  padding: "0.1rem 0.4rem",
-                  borderRadius: "9999px",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "0.25rem",
-                }}
-              >
-                <Database size={10} color="#0078d4" />
-                {t.display_name}
-              </span>
-            ))}
-          </div>
+          {tables.map((t) => (
+            <span key={t.id} className={styles.tableChip} title={t.display_name}>
+              <Database size={10} />
+              {t.display_name}
+            </span>
+          ))}
         </div>
       </div>
 
@@ -472,7 +455,7 @@ export const JupyterNotebook: React.FC<JupyterNotebookProps> = ({
               Materialize DataFrame to Dashboard Catalog
             </h3>
             <p style={{ fontSize: "0.8125rem", color: "var(--mb-color-text-muted)", marginBottom: "1rem" }}>
-              Saves <code style={{ color: "#0078d4" }}>{targetVarName}</code> from this active kernel session into a queryable Parquet table.
+              Saves <code style={{ color: "var(--mb-color-brand)" }}>{targetVarName}</code> from this active kernel session into a queryable Parquet table.
             </p>
 
             <div style={{ marginBottom: "1.25rem" }}>

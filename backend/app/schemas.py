@@ -34,11 +34,61 @@ class TableOut(BaseModel):
     id: str
     dashboard_id: str
     display_name: str
-    table_type: str  # "raw_upload" | "derived_python"
+    table_type: str  # "raw_upload" | "derived_python" | "derived_model" | "python_script" | "manual"
     file_path: str
     row_count: int
     columns: List[ColumnMetadata]
     created_at: str
+    origin: str = "upload"  # "upload" | "notebook" | "derived" | "python_script" | "manual"
+    role: str = "data"  # "data" | "helper"
+    script: Optional[str] = None
+    inputs: List[str] = []
+    last_refreshed_at: Optional[str] = None
+    pos_x: Optional[int] = None
+    pos_y: Optional[int] = None
+    pos_w: Optional[int] = None
+    pos_h: Optional[int] = None
+
+# ----------------- Data Modeling: New Table / New Column -----------------
+class TableColumnCreate(BaseModel):
+    name: str
+    dtype: str  # "string" | "integer" | "float" | "boolean" | "date" | "datetime"
+
+class EmptyTableCreate(BaseModel):
+    display_name: str
+    columns: List[TableColumnCreate]
+    role: str = "data"
+
+class PythonTableCreate(BaseModel):
+    display_name: str
+    script: str
+    inputs: List[str] = []
+    role: str = "data"
+
+class TableScriptUpdate(BaseModel):
+    script: str
+    inputs: List[str] = []
+    role: Optional[str] = None
+
+class ModelLayoutItem(BaseModel):
+    table_id: str
+    x: int
+    y: int
+    w: int
+    h: int
+
+class TableRowsResponse(BaseModel):
+    table_id: str
+    columns: List[ColumnMetadata]
+    rows: List[Dict[str, Any]]
+    total_count: int
+    unfiltered_count: int
+    page: int
+    page_size: int
+    total_pages: int
+    sort_column: Optional[str] = None
+    sort_dir: str = "asc"
+    search: Optional[str] = None
 
 # ----------------- Relationship Models -----------------
 class RelationshipCreate(BaseModel):
@@ -75,7 +125,26 @@ class FilterOut(BaseModel):
     column_name: str
     default_value: Optional[Any] = None
     created_at: str
-# ----------------- Card Models -----------------
+# ----------------- Metric / Measure Models -----------------
+class MetricCreate(BaseModel):
+    table_id: str
+    name: str
+    description: Optional[str] = None
+    formula_type: str = "simple_agg"  # "simple_agg" | "ratio"
+    definition: Dict[str, Any]
+    format_type: str = "number"  # "currency" | "percentage" | "number"
+
+class MetricOut(BaseModel):
+    id: str
+    dashboard_id: str
+    table_id: str
+    name: str
+    description: Optional[str] = None
+    formula_type: str
+    definition: Dict[str, Any]
+    format_type: str
+    created_at: str
+
 class GridLayout(BaseModel):
     x: int = 0
     y: int = 0
@@ -90,8 +159,9 @@ class CardLayoutItem(BaseModel):
     h: int
 
 class MeasureSpec(BaseModel):
-    column: str
-    aggregation: str = "sum"  # "sum" | "avg" | "count" | "min" | "max"
+    column: Optional[str] = None
+    aggregation: Optional[str] = "sum"
+    metric_id: Optional[str] = None
     alias: Optional[str] = None
 
 class DimensionSpec(BaseModel):
@@ -174,3 +244,15 @@ class NotebookCell(BaseModel):
 
 class NotebookData(BaseModel):
     cells: List[NotebookCell]
+
+# ----------------- Data Modeling (New Table / New Column) -----------------
+class CalculatedColumnCreate(BaseModel):
+    name: str
+    expression: str
+
+class AggregatedTableCreate(BaseModel):
+    base_table_id: str
+    display_name: str
+    dimensions: List[str] = []
+    measures: List[MeasureSpec] = []
+    filters: List[Dict[str, Any]] = []

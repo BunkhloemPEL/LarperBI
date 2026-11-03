@@ -20,6 +20,8 @@ from .schemas import (
     CardLayoutItem,
     FilterCreate,
     FilterOut,
+    MetricCreate,
+    MetricOut,
     QueryRequest,
     QueryResult,
     PythonExecuteRequest,
@@ -27,8 +29,28 @@ from .schemas import (
     SaveDerivedTableRequest,
     ExecuteCellRequest,
     NotebookData,
+    CalculatedColumnCreate,
+    AggregatedTableCreate,
+    EmptyTableCreate,
+    PythonTableCreate,
+    TableScriptUpdate,
+    ModelLayoutItem,
+    TableRowsResponse,
 )
-from .storage import ingest_file, list_dashboard_tables, get_table_by_id, get_dashboard_dir
+from .storage import (
+    ingest_file,
+    list_dashboard_tables,
+    get_table_by_id,
+    get_dashboard_dir,
+    add_calculated_column,
+    create_aggregated_table,
+    create_empty_table,
+    create_python_table,
+    refresh_python_table,
+    update_table_script,
+    update_model_layout,
+    get_table_rows,
+)
 from .sandbox import execute_python_sandbox, save_derived_table_from_sandbox
 from .notebook_session import (
     get_kernel_session,
@@ -36,6 +58,7 @@ from .notebook_session import (
     load_notebook,
     save_notebook,
     materialize_derived_table_from_session,
+    materialize_derived_table_from_code,
 )
 from .query_engine import execute_card_query
 
@@ -162,7 +185,23 @@ def get_dashboard_detail(id: str):
             "table_id": f["table_id"],
             "column_name": f["column_name"],
             "default_value": json.loads(f["default_value_json"]) if f["default_value_json"] else None,
-            "created_at": str(f["created_at"]),
+        })
+
+    # Fetch dashboard metrics
+    cursor.execute("SELECT * FROM dashboard_metrics WHERE dashboard_id = ? ORDER BY created_at ASC", (id,))
+    metric_rows = cursor.fetchall()
+    metrics = []
+    for m in metric_rows:
+        metrics.append({
+            "id": m["id"],
+            "dashboard_id": m["dashboard_id"],
+            "table_id": m["table_id"],
+            "name": m["name"],
+            "description": m["description"],
+            "formula_type": m["formula_type"],
+            "definition": json.loads(m["definition_json"]),
+            "format_type": m["format_type"],
+            "created_at": str(m["created_at"]),
         })
     conn.close()
 
@@ -172,6 +211,7 @@ def get_dashboard_detail(id: str):
         "cards": cards,
         "relationships": relationships,
         "filters": filters,
+        "metrics": metrics,
     }
 
 @app.put("/api/v1/dashboards/{id}")
@@ -243,9 +283,48 @@ def delete_table(id: str, table_id: str):
 # ----------------- Relationship Endpoints -----------------
 @app.post("/api/v1/dashboards/{id}/relationships", response_model=RelationshipOut)
 def create_relationship(id: str, payload: RelationshipCreate):
-    rel_id = f"rel_{uuid.uuid4().hex[:8]}"
+    from_tbl = get_table_by_id(payload.from_table_id)
+    to_tbl = get_table_by_id(payload.to_table_id)
+    if not from_tbl or from_tbl.dashboard_id != id:
+        raise HTTPException(status_code=400, detail="Source table not found on this dashboard.")
+    if not to_tbl or to_tbl.dashboard_id != id:
+        raise HTTPException(status_code=400, detail="Target table not found on this dashboard.")
+    if payload.from_table_id == payload.to_table_id:
+        raise HTTPException(status_code=400, detail="A table cannot be linked to itself.")
+
+    if payload.from_column not in [c.name for c in from_tbl.columns]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Column '{payload.from_column}' does not exist on '{from_tbl.display_name}'.",
+        )
+    if payload.to_column not in [c.name for c in to_tbl.columns]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Column '{payload.to_column}' does not exist on '{to_tbl.display_name}'.",
+        )
+
     conn = get_connection()
     cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT id FROM table_relationships
+        WHERE dashboard_id = ?
+          AND from_table_id = ? AND from_column = ?
+          AND to_table_id = ? AND to_column = ?
+        """,
+        (
+            id,
+            payload.from_table_id,
+            payload.from_column,
+            payload.to_table_id,
+            payload.to_column,
+        ),
+    )
+    if cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=400, detail="This relationship already exists.")
+
+    rel_id = f"rel_{uuid.uuid4().hex[:8]}"
     cursor.execute("""
         INSERT INTO table_relationships (
             id, dashboard_id, from_table_id, from_column, to_table_id, to_column, cardinality
@@ -352,6 +431,179 @@ def get_distinct_column_values(id: str, table_id: str, column_name: str):
         .to_list()
     )
     return [str(v) if not isinstance(v, (int, float, str, bool)) else v for v in distinct_vals]
+# ----------------- Dashboard Metric / Measure Endpoints -----------------
+@app.get("/api/v1/dashboards/{id}/metrics", response_model=List[MetricOut])
+def list_metrics(id: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM dashboard_metrics WHERE dashboard_id = ? ORDER BY created_at ASC", (id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        MetricOut(
+            id=r["id"],
+            dashboard_id=r["dashboard_id"],
+            table_id=r["table_id"],
+            name=r["name"],
+            description=r["description"],
+            formula_type=r["formula_type"],
+            definition=json.loads(r["definition_json"]),
+            format_type=r["format_type"],
+            created_at=str(r["created_at"]),
+        )
+        for r in rows
+    ]
+
+@app.post("/api/v1/dashboards/{id}/metrics", response_model=MetricOut)
+def create_metric(id: str, payload: MetricCreate):
+    metric_id = f"metric_{uuid.uuid4().hex[:8]}"
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO dashboard_metrics (
+            id, dashboard_id, table_id, name, description, formula_type, definition_json, format_type
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        metric_id, id, payload.table_id, payload.name, payload.description,
+        payload.formula_type, json.dumps(payload.definition), payload.format_type
+    ))
+    conn.commit()
+    conn.close()
+
+    return MetricOut(
+        id=metric_id,
+        dashboard_id=id,
+        table_id=payload.table_id,
+        name=payload.name,
+        description=payload.description,
+        formula_type=payload.formula_type,
+        definition=payload.definition,
+        format_type=payload.format_type,
+        created_at="just now",
+    )
+
+@app.delete("/api/v1/dashboards/{id}/metrics/{metric_id}")
+def delete_metric(id: str, metric_id: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM dashboard_metrics WHERE id = ? AND dashboard_id = ?", (metric_id, id))
+    conn.commit()
+    conn.close()
+    return {"status": "deleted", "metric_id": metric_id}
+
+
+# ----------------- Data Modeling: New Table / New Column -----------------
+@app.post("/api/v1/dashboards/{id}/tables/{table_id}/calculated-column", response_model=TableOut)
+def create_calculated_column(id: str, table_id: str, payload: CalculatedColumnCreate):
+    try:
+        return add_calculated_column(id, table_id, payload.name, payload.expression)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/v1/dashboards/{id}/derived-tables/aggregate", response_model=TableOut)
+def create_aggregated_derived_table(id: str, payload: AggregatedTableCreate):
+    try:
+        return create_aggregated_table(
+            id,
+            payload.base_table_id,
+            payload.display_name,
+            payload.dimensions,
+            [m.model_dump() for m in payload.measures],
+            payload.filters,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+# ----------------- Data Modeling: Empty / Scripted Tables -----------------
+@app.post("/api/v1/dashboards/{id}/tables/empty", response_model=TableOut)
+def create_empty_dashboard_table(id: str, payload: EmptyTableCreate):
+    try:
+        return create_empty_table(
+            id,
+            payload.display_name,
+            [c.model_dump() for c in payload.columns],
+            payload.role,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/v1/dashboards/{id}/tables/python", response_model=TableOut)
+def create_python_dashboard_table(id: str, payload: PythonTableCreate):
+    try:
+        return create_python_table(
+            id,
+            payload.display_name,
+            payload.script,
+            payload.inputs,
+            payload.role,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/v1/dashboards/{id}/tables/{table_id}/refresh", response_model=TableOut)
+def refresh_dashboard_table(id: str, table_id: str):
+    try:
+        return refresh_python_table(id, table_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.put("/api/v1/dashboards/{id}/tables/{table_id}/script", response_model=TableOut)
+def set_dashboard_table_script(id: str, table_id: str, payload: TableScriptUpdate):
+    try:
+        return update_table_script(
+            id,
+            table_id,
+            payload.script,
+            payload.inputs,
+            payload.role,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.put("/api/v1/dashboards/{id}/model-layout")
+def save_model_layout(id: str, payload: List[ModelLayoutItem]):
+    updated = update_model_layout(id, [item.model_dump() for item in payload])
+    return {"status": "ok", "updated": updated}
+
+
+@app.get("/api/v1/dashboards/{id}/tables/{table_id}/rows", response_model=TableRowsResponse)
+def read_table_rows(
+    id: str,
+    table_id: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=500),
+    search: Optional[str] = Query(None),
+    sort_column: Optional[str] = Query(None),
+    sort_dir: str = Query("asc"),
+    filters: Optional[str] = Query(None, description="JSON array: [{column, values}]"),
+):
+    column_filters = None
+    if filters:
+        try:
+            column_filters = json.loads(filters)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid filters JSON.")
+        if not isinstance(column_filters, list):
+            raise HTTPException(status_code=400, detail="Filters must be a JSON array.")
+    try:
+        return get_table_rows(
+            id,
+            table_id,
+            page=page,
+            page_size=page_size,
+            search=search,
+            sort_column=sort_column,
+            sort_dir=sort_dir,
+            column_filters=column_filters,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 # ----------------- Card Management Endpoints -----------------
 @app.post("/api/v1/dashboards/{id}/cards")
@@ -461,8 +713,18 @@ def execute_sandbox(id: str, payload: PythonExecuteRequest):
 def save_derived_table(id: str, payload: SaveDerivedTableRequest):
     try:
         return materialize_derived_table_from_session(id, payload.table_name, payload.dataframe_var)
-    except Exception:
-        return save_derived_table_from_sandbox(id, payload.table_name, payload.dataframe_var, payload.code)
+    except Exception as session_err:
+        if payload.code:
+            try:
+                return materialize_derived_table_from_code(
+                    id, payload.table_name, payload.dataframe_var, payload.code
+                )
+            except Exception as code_err:
+                raise HTTPException(status_code=400, detail=str(code_err))
+        raise HTTPException(
+            status_code=400,
+            detail=f"{session_err} Re-run the cell that creates this DataFrame, then try saving again.",
+        )
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)

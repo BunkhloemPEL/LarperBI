@@ -106,28 +106,80 @@ def execute_card_query(dashboard_id: str, table_id: str, viz_type: str, config: 
         df = df.with_columns(expr_transforms)
 
     # 5. Build Measure Aggregations
+    # Load dashboard metrics if any measures reference metric_id
+    metric_ids = [m.metric_id for m in config.measures if m.metric_id]
+    metrics_map = {}
+    if metric_ids:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT id, name, formula_type, definition_json, format_type FROM dashboard_metrics WHERE dashboard_id = ? AND id IN ({','.join(['?']*len(metric_ids))})",
+            (dashboard_id, *metric_ids)
+        )
+        for r in cursor.fetchall():
+            metrics_map[r["id"]] = {
+                "name": r["name"],
+                "formula_type": r["formula_type"],
+                "definition": json.loads(r["definition_json"]),
+                "format_type": r["format_type"]
+            }
+        conn.close()
+
     agg_exprs: List[pl.Expr] = []
     measure_aliases: List[str] = []
 
     for m in config.measures:
-        cname = m.column
-        agg = m.aggregation.lower()
-        alias = m.alias or f"{agg}_{cname}"
-        measure_aliases.append(alias)
+        if m.metric_id and m.metric_id in metrics_map:
+            met = metrics_map[m.metric_id]
+            m_name = met["name"]
+            alias = m.alias or m_name
+            measure_aliases.append(alias)
+            f_type = met["formula_type"]
+            f_def = met["definition"]
 
-        if agg == "sum":
-            agg_exprs.append(pl.col(cname).sum().fill_null(0).alias(alias))
-        elif agg == "avg":
-            agg_exprs.append(pl.col(cname).mean().fill_null(0).alias(alias))
-        elif agg == "count":
-            agg_exprs.append(pl.col(cname).count().alias(alias))
-        elif agg == "min":
-            agg_exprs.append(pl.col(cname).min().alias(alias))
-        elif agg == "max":
-            agg_exprs.append(pl.col(cname).max().alias(alias))
-        else:
-            agg_exprs.append(pl.col(cname).sum().fill_null(0).alias(alias))
+            if f_type == "simple_agg":
+                col = f_def.get("column")
+                agg = f_def.get("aggregation", "sum").lower()
+                if agg == "sum":
+                    agg_exprs.append(pl.col(col).sum().fill_null(0).alias(alias))
+                elif agg == "avg":
+                    agg_exprs.append(pl.col(col).mean().fill_null(0).alias(alias))
+                elif agg == "count":
+                    agg_exprs.append(pl.col(col).count().alias(alias))
+                elif agg == "count_distinct":
+                    agg_exprs.append(pl.col(col).n_unique().alias(alias))
+                elif agg == "min":
+                    agg_exprs.append(pl.col(col).min().alias(alias))
+                elif agg == "max":
+                    agg_exprs.append(pl.col(col).max().alias(alias))
+            elif f_type == "ratio":
+                num_col = f_def.get("numerator_column")
+                num_agg = f_def.get("numerator_agg", "sum")
+                denom_col = f_def.get("denominator_column")
+                denom_agg = f_def.get("denominator_agg", "count")
+                mult = float(f_def.get("multiplier", 100))
 
+                num_e = pl.col(num_col).sum() if num_agg == "sum" else pl.col(num_col).count()
+                denom_e = pl.col(denom_col).sum() if denom_agg == "sum" else pl.col(denom_col).count()
+                agg_exprs.append(((num_e / denom_e) * mult).fill_null(0).round(2).alias(alias))
+        elif m.column:
+            cname = m.column
+            agg = m.aggregation.lower() if m.aggregation else "sum"
+            alias = m.alias or f"{agg}_{cname}"
+            measure_aliases.append(alias)
+
+            if agg == "sum":
+                agg_exprs.append(pl.col(cname).sum().fill_null(0).alias(alias))
+            elif agg == "avg":
+                agg_exprs.append(pl.col(cname).mean().fill_null(0).alias(alias))
+            elif agg == "count":
+                agg_exprs.append(pl.col(cname).count().alias(alias))
+            elif agg == "min":
+                agg_exprs.append(pl.col(cname).min().alias(alias))
+            elif agg == "max":
+                agg_exprs.append(pl.col(cname).max().alias(alias))
+            else:
+                agg_exprs.append(pl.col(cname).sum().fill_null(0).alias(alias))
     # If no measures specified, default to count
     if not agg_exprs and not group_cols:
         agg_exprs.append(pl.len().alias("count"))
@@ -157,12 +209,33 @@ def execute_card_query(dashboard_id: str, table_id: str, viz_type: str, config: 
 
     if viz_type == "smart_scalar":
         val = float(raw_rows[0][0]) if raw_rows and len(raw_rows[0]) > 0 else 0.0
+
+        first_measure = config.measures[0] if config.measures else None
+        metric_title = "Total Metric"
+        fmt_type = "number"
+
+        if first_measure is not None:
+            if first_measure.metric_id and first_measure.metric_id in metrics_map:
+                metric_title = metrics_map[first_measure.metric_id]["name"]
+                fmt_type = metrics_map[first_measure.metric_id]["format_type"]
+            else:
+                metric_title = first_measure.alias or first_measure.column or "Total Metric"
+                if first_measure.column and "amount" in first_measure.column.lower():
+                    fmt_type = "currency"
+
+        if fmt_type == "currency":
+            formatted_value = f"${val:,.2f}"
+        elif fmt_type == "percentage":
+            formatted_value = f"{val:.2f}%"
+        else:
+            formatted_value = f"{val:,.0f}"
+
         shaped_data = {
-            "title": config.measures[0].column if config.measures else "Total Metric",
+            "title": metric_title,
             "current_value": val,
             "previous_value": val * 0.92,
             "percent_change": 8.0,
-            "formatted_value": f"${val:,.2f}" if "amount" in (config.measures[0].column if config.measures else "").lower() else f"{val:,.0f}",
+            "formatted_value": formatted_value,
             "trend_direction": "up",
             "is_favorable": True,
             "comparison_label": "vs baseline",
