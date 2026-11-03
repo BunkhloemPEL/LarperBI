@@ -17,7 +17,7 @@ import type { DashboardItem, DashboardDetail } from "./types/larper";
 
 import { DashboardList } from "./components/DashboardManager/DashboardList";
 import { CanvasView } from "./components/DashboardCanvas/CanvasView";
-import { PythonLab } from "./components/PythonLab/PythonLab";
+import { JupyterNotebook } from "./components/Notebook/JupyterNotebook";
 import { ModelView } from "./components/ModelView/ModelView";
 import { VisualGallery } from "./components/VisualGallery";
 
@@ -267,7 +267,7 @@ export const App: React.FC = () => {
               }}
             >
               <Terminal size={14} />
-              Python Lab (EDA)
+              Jupyter Notebook (EDA)
             </button>
 
             <button
@@ -337,12 +337,13 @@ export const App: React.FC = () => {
                 dashboardId={activeDashboardId}
                 tables={dashboardDetail.tables}
                 cards={dashboardDetail.cards}
+                filters={dashboardDetail.filters || []}
                 onRefresh={loadActiveDashboard}
               />
             )}
 
             {activeTab === "python_lab" && dashboardDetail && (
-              <PythonLab
+              <JupyterNotebook
                 dashboardId={activeDashboardId}
                 tables={dashboardDetail.tables}
                 onTableCreated={loadActiveDashboard}

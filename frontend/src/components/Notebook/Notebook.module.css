@@ -1,0 +1,369 @@
+/* VS Code Jupyter Notebook Exact Styling */
+.notebookContainer {
+  display: flex;
+  flex-direction: column;
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+  max-width: 1200px;
+  margin: 0 auto 3rem auto;
+  min-height: 650px;
+}
+
+.notebookToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  background-color: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.toolbarGroup {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.toolBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.3125rem 0.625rem;
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+  background-color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.toolBtn:hover {
+  background-color: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.toolBtnPrimary {
+  background-color: #0078d4;
+  color: #ffffff;
+  border-color: #0078d4;
+}
+
+.toolBtnPrimary:hover {
+  background-color: #106ebe;
+  color: #ffffff;
+}
+
+.cellsArea {
+  padding: 1.5rem 1rem 3rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* VS Code Notebook Cell Root */
+.cellWrapper {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.cellCard {
+  display: flex;
+  align-items: flex-start;
+  border: 1px solid #e2e8f0;
+  border-left: 3px solid transparent;
+  border-radius: 4px;
+  background-color: #ffffff;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  transition: border-color 0.1s ease, box-shadow 0.1s ease;
+  position: relative;
+}
+
+.cellFocused {
+  border-color: #cbd5e1 !important;
+  border-left-color: #0078d4 !important; /* VS Code Focus Blue */
+  box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.05) !important;
+}
+
+.cellCard:hover {
+  border-left-color: #94a3b8;
+}
+
+/* Left Gutter: Run Play Button & Execution Counter */
+.leftGutter {
+  width: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 0.625rem;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.playBtn {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid #cbd5e1;
+  background-color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #475569;
+  transition: all 0.1s ease;
+}
+
+.playBtn:hover {
+  border-color: #0078d4;
+  color: #0078d4;
+  background-color: rgba(0, 120, 212, 0.08);
+  transform: scale(1.05);
+}
+
+.execStatus {
+  font-family: var(--mb-font-mono);
+  font-size: 0.6875rem;
+  color: #64748b;
+  margin-top: 0.375rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.executionCountText {
+  color: #303f9f;
+  font-weight: 700;
+}
+
+.durationBadge {
+  font-size: 0.625rem;
+  color: #16a34a;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Center Editor & Output Content */
+.cellBody {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cellTopBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.375rem 0.75rem 0.25rem 0;
+  font-size: 0.6875rem;
+  color: #94a3b8;
+}
+
+.cellActions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  opacity: 0.2;
+  transition: opacity 0.15s ease;
+}
+
+.cellCard:hover .cellActions,
+.cellFocused .cellActions {
+  opacity: 1;
+}
+
+.cellActionBtn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #64748b;
+  padding: 3px;
+  border-radius: 3px;
+}
+
+.cellActionBtn:hover {
+  color: #0f172a;
+  background-color: #f1f5f9;
+}
+
+.editorContainer {
+  padding: 0.25rem 0.75rem 0.5rem 0;
+}
+
+.markdownContainer {
+  padding: 0.5rem 0.75rem 0.75rem 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: #1e293b;
+}
+
+/* Output Section */
+.cellOutputs {
+  border-top: 1px solid #f1f5f9;
+  padding: 0.75rem 0.75rem 0.75rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.stdoutBox {
+  font-family: var(--mb-font-mono);
+  font-size: 0.75rem;
+  color: #1e293b;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+.resultBox {
+  font-family: var(--mb-font-mono);
+  font-size: 0.75rem;
+  color: #0f172a;
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+.errorBox {
+  font-family: var(--mb-font-mono);
+  font-size: 0.75rem;
+  color: #dc2626;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 4px;
+  padding: 0.625rem 0.75rem;
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+/* VS Code Interactive Data Viewer Table */
+.dataViewer {
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background-color: #ffffff;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.dataViewerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.375rem 0.75rem;
+  background-color: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.75rem;
+}
+
+.dataViewerTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+  text-align: left;
+}
+
+.dataViewerTable th {
+  padding: 0.375rem 0.625rem;
+  background-color: #f1f5f9;
+  font-weight: 600;
+  color: #475569;
+  border-bottom: 1px solid #cbd5e1;
+  white-space: nowrap;
+}
+
+.dataViewerTable td {
+  padding: 0.3125rem 0.625rem;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+  white-space: nowrap;
+  font-family: var(--mb-font-mono);
+}
+
+.saveDerivedBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid rgba(136, 191, 77, 0.4);
+  background-color: rgba(136, 191, 77, 0.12);
+  color: var(--mb-color-success);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.saveDerivedBtn:hover {
+  background-color: rgba(136, 191, 77, 0.2);
+}
+
+/* VS Code Hover Separator Insert Bar Between Cells */
+.insertDivider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  position: relative;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.insertDivider:hover {
+  opacity: 1;
+}
+
+.dividerLine {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background-color: #cbd5e1;
+  z-index: 1;
+}
+
+.insertBtns {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  background-color: #ffffff;
+  padding: 0 0.5rem;
+}
+
+.insertPillBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  border: 1px solid #cbd5e1;
+  background-color: #ffffff;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+}
+
+.insertPillBtn:hover {
+  border-color: #0078d4;
+  color: #0078d4;
+  background-color: rgba(0, 120, 212, 0.05);
+}

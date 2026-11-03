@@ -55,14 +55,32 @@ def execute_card_query(dashboard_id: str, table_id: str, viz_type: str, config: 
         col = f.get("column")
         op = f.get("operator", "eq")
         val = f.get("value")
-        if col in df.columns and val is not None:
+        if col in df.columns and val is not None and val != "":
             if op == "eq":
                 df = df.filter(pl.col(col) == val)
+            elif op == "in" and isinstance(val, list):
+                if val:
+                    df = df.filter(pl.col(col).is_in(val))
+            elif op in ["date_range", "between"]:
+                if isinstance(val, dict):
+                    start = val.get("start")
+                    end = val.get("end")
+                    if start:
+                        df = df.filter(pl.col(col).cast(pl.String) >= str(start))
+                    if end:
+                        df = df.filter(pl.col(col).cast(pl.String) <= str(end))
+                elif isinstance(val, (list, tuple)) and len(val) == 2:
+                    df = df.filter((pl.col(col).cast(pl.String) >= str(val[0])) & (pl.col(col).cast(pl.String) <= str(val[1])))
             elif op == "gt":
                 df = df.filter(pl.col(col) > val)
+            elif op == "gte":
+                df = df.filter(pl.col(col) >= val)
             elif op == "lt":
                 df = df.filter(pl.col(col) < val)
-
+            elif op == "lte":
+                df = df.filter(pl.col(col) <= val)
+            elif op == "contains":
+                df = df.filter(pl.col(col).cast(pl.String).str.to_lowercase().str.contains(str(val).lower()))
     # 4. Handle Dimensions and Date Grains
     group_cols: List[str] = []
     expr_transforms: List[pl.Expr] = []
@@ -149,7 +167,6 @@ def execute_card_query(dashboard_id: str, table_id: str, viz_type: str, config: 
             "is_favorable": True,
             "comparison_label": "vs baseline",
         }
-
     elif viz_type in ["pie", "donut"]:
         dim_col = group_cols[0] if group_cols else "category"
         meas_col = measure_aliases[0] if measure_aliases else "value"

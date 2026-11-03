@@ -65,7 +65,19 @@ def init_db():
         FOREIGN KEY (dashboard_id) REFERENCES dashboards(id) ON DELETE CASCADE
     );
     """)
-
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS dashboard_filters (
+        id TEXT PRIMARY KEY,
+        dashboard_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        filter_type TEXT NOT NULL,
+        table_id TEXT NOT NULL,
+        column_name TEXT NOT NULL,
+        default_value_json TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (dashboard_id) REFERENCES dashboards(id) ON DELETE CASCADE
+    );
+    """)
     conn.commit()
     conn.close()
 

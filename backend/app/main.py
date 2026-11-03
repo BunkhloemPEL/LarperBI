@@ -18,14 +18,25 @@ from .schemas import (
     CardUpdate,
     CardOut,
     CardLayoutItem,
+    FilterCreate,
+    FilterOut,
     QueryRequest,
     QueryResult,
     PythonExecuteRequest,
     PythonExecuteResponse,
     SaveDerivedTableRequest,
+    ExecuteCellRequest,
+    NotebookData,
 )
 from .storage import ingest_file, list_dashboard_tables, get_table_by_id, get_dashboard_dir
 from .sandbox import execute_python_sandbox, save_derived_table_from_sandbox
+from .notebook_session import (
+    get_kernel_session,
+    restart_kernel_session,
+    load_notebook,
+    save_notebook,
+    materialize_derived_table_from_session,
+)
 from .query_engine import execute_card_query
 
 app = FastAPI(
@@ -137,6 +148,22 @@ def get_dashboard_detail(id: str):
     cursor.execute("SELECT * FROM table_relationships WHERE dashboard_id = ?", (id,))
     rel_rows = cursor.fetchall()
     relationships = [dict(r) for r in rel_rows]
+
+    # Fetch dashboard filters
+    cursor.execute("SELECT * FROM dashboard_filters WHERE dashboard_id = ? ORDER BY created_at ASC", (id,))
+    filter_rows = cursor.fetchall()
+    filters = []
+    for f in filter_rows:
+        filters.append({
+            "id": f["id"],
+            "dashboard_id": f["dashboard_id"],
+            "name": f["name"],
+            "filter_type": f["filter_type"],
+            "table_id": f["table_id"],
+            "column_name": f["column_name"],
+            "default_value": json.loads(f["default_value_json"]) if f["default_value_json"] else None,
+            "created_at": str(f["created_at"]),
+        })
     conn.close()
 
     return {
@@ -144,6 +171,7 @@ def get_dashboard_detail(id: str):
         "tables": tables,
         "cards": cards,
         "relationships": relationships,
+        "filters": filters,
     }
 
 @app.put("/api/v1/dashboards/{id}")
@@ -248,6 +276,82 @@ def delete_relationship(id: str, rel_id: str):
     conn.commit()
     conn.close()
     return {"status": "deleted", "rel_id": rel_id}
+# ----------------- Dashboard Filter Endpoints -----------------
+@app.get("/api/v1/dashboards/{id}/filters", response_model=List[FilterOut])
+def list_filters(id: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM dashboard_filters WHERE dashboard_id = ? ORDER BY created_at ASC", (id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        FilterOut(
+            id=r["id"],
+            dashboard_id=r["dashboard_id"],
+            name=r["name"],
+            filter_type=r["filter_type"],
+            table_id=r["table_id"],
+            column_name=r["column_name"],
+            default_value=json.loads(r["default_value_json"]) if r["default_value_json"] else None,
+            created_at=str(r["created_at"]),
+        )
+        for r in rows
+    ]
+
+@app.post("/api/v1/dashboards/{id}/filters", response_model=FilterOut)
+def create_filter(id: str, payload: FilterCreate):
+    filter_id = f"filt_{uuid.uuid4().hex[:8]}"
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO dashboard_filters (
+            id, dashboard_id, name, filter_type, table_id, column_name, default_value_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (
+        filter_id, id, payload.name, payload.filter_type, payload.table_id,
+        payload.column_name, json.dumps(payload.default_value) if payload.default_value is not None else None
+    ))
+    conn.commit()
+    conn.close()
+
+    return FilterOut(
+        id=filter_id,
+        dashboard_id=id,
+        name=payload.name,
+        filter_type=payload.filter_type,
+        table_id=payload.table_id,
+        column_name=payload.column_name,
+        default_value=payload.default_value,
+        created_at="just now",
+    )
+
+@app.delete("/api/v1/dashboards/{id}/filters/{filter_id}")
+def delete_filter(id: str, filter_id: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM dashboard_filters WHERE id = ? AND dashboard_id = ?", (filter_id, id))
+    conn.commit()
+    conn.close()
+    return {"status": "deleted", "filter_id": filter_id}
+
+@app.get("/api/v1/dashboards/{id}/tables/{table_id}/columns/{column_name}/distinct")
+def get_distinct_column_values(id: str, table_id: str, column_name: str):
+    table = get_table_by_id(table_id)
+    if not table or not os.path.exists(table.file_path):
+        raise HTTPException(status_code=404, detail="Table not found")
+    import polars as pl
+    df = pl.read_parquet(table.file_path)
+    if column_name not in df.columns:
+        raise HTTPException(status_code=400, detail=f"Column {column_name} not found in table")
+    
+    distinct_vals = (
+        df.select(pl.col(column_name).drop_nulls().unique())
+        .sort(column_name)
+        .head(100)
+        .to_series()
+        .to_list()
+    )
+    return [str(v) if not isinstance(v, (int, float, str, bool)) else v for v in distinct_vals]
 
 # ----------------- Card Management Endpoints -----------------
 @app.post("/api/v1/dashboards/{id}/cards")
@@ -328,6 +432,26 @@ def delete_card(id: str, card_id: str):
 def run_query(id: str, payload: QueryRequest):
     return execute_card_query(id, payload.table_id, payload.viz_type, payload.config)
 
+# ----------------- Jupyter Notebook Endpoints -----------------
+@app.get("/api/v1/dashboards/{id}/notebook")
+def get_dashboard_notebook(id: str):
+    return load_notebook(id)
+
+@app.put("/api/v1/dashboards/{id}/notebook")
+def update_dashboard_notebook(id: str, payload: NotebookData):
+    save_notebook(id, payload.model_dump())
+    return {"status": "saved"}
+
+@app.post("/api/v1/dashboards/{id}/notebook/execute-cell")
+def execute_notebook_cell(id: str, payload: ExecuteCellRequest):
+    session = get_kernel_session(id)
+    return session.execute_cell(payload.code)
+
+@app.post("/api/v1/dashboards/{id}/notebook/restart")
+def restart_notebook(id: str):
+    session = restart_kernel_session(id)
+    return {"status": "restarted", "execution_count": session.execution_count}
+
 # ----------------- Python Sandbox & Derived Tables -----------------
 @app.post("/api/v1/dashboards/{id}/sandbox/execute", response_model=PythonExecuteResponse)
 def execute_sandbox(id: str, payload: PythonExecuteRequest):
@@ -335,8 +459,10 @@ def execute_sandbox(id: str, payload: PythonExecuteRequest):
 
 @app.post("/api/v1/dashboards/{id}/derived-tables", response_model=TableOut)
 def save_derived_table(id: str, payload: SaveDerivedTableRequest):
-    return save_derived_table_from_sandbox(id, payload.table_name, payload.dataframe_var, payload.code)
-
+    try:
+        return materialize_derived_table_from_session(id, payload.table_name, payload.dataframe_var)
+    except Exception:
+        return save_derived_table_from_sandbox(id, payload.table_name, payload.dataframe_var, payload.code)
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)

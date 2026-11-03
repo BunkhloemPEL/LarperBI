@@ -4,6 +4,8 @@ import type {
   TableItem,
   CardConfig,
   RelationshipItem,
+  FilterItem,
+  NotebookData,
   PythonExecuteResponse,
   QueryResult,
 } from "../types/larper";
@@ -171,7 +173,87 @@ export async function deleteRelationship(dashboardId: string, relId: string): Pr
   });
   if (!res.ok) throw new Error("Failed to delete relationship");
 }
+export async function fetchDashboardFilters(dashboardId: string): Promise<FilterItem[]> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboards/${dashboardId}/filters`);
+  if (!res.ok) throw new Error("Failed to fetch filters");
+  return res.json();
+}
 
+export async function createDashboardFilter(dashboardId: string, filter: {
+  name: string;
+  filter_type: string;
+  table_id: string;
+  column_name: string;
+  default_value?: unknown;
+}): Promise<FilterItem> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboards/${dashboardId}/filters`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: jsonStringify(filter),
+  });
+  if (!res.ok) throw new Error("Failed to create filter");
+  return res.json();
+}
+
+export async function deleteDashboardFilter(dashboardId: string, filterId: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboards/${dashboardId}/filters/${filterId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to delete filter");
+}
+
+export async function fetchDistinctColumnValues(dashboardId: string, tableId: string, columnName: string): Promise<(string | number | boolean)[]> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboards/${dashboardId}/tables/${tableId}/columns/${columnName}/distinct`);
+  if (!res.ok) throw new Error("Failed to fetch distinct values");
+  return res.json();
+}
+
+export async function fetchNotebook(dashboardId: string): Promise<NotebookData> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboards/${dashboardId}/notebook`);
+  if (!res.ok) throw new Error("Failed to fetch notebook");
+  return res.json();
+}
+
+export async function saveNotebookData(dashboardId: string, data: NotebookData): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboards/${dashboardId}/notebook`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: jsonStringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to save notebook");
+}
+
+export async function executeNotebookCell(dashboardId: string, cellId: string, code: string): Promise<{
+  success: boolean;
+  execution_count: number;
+  stdout: string;
+  error?: string;
+  table_preview?: {
+    var_name: string;
+    columns: string[];
+    rows: (string | number | boolean | null)[][];
+    row_count: number;
+  };
+  plot_base64?: string;
+  result_text?: string;
+  duration_ms?: number;
+  detected_dataframes: string[];
+}> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboards/${dashboardId}/notebook/execute-cell`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: jsonStringify({ cell_id: cellId, code }),
+  });
+  if (!res.ok) throw new Error("Failed to execute notebook cell");
+  return res.json();
+}
+
+export async function restartKernel(dashboardId: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboards/${dashboardId}/notebook/restart`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("Failed to restart kernel");
+}
 function jsonStringify(obj: unknown): string {
   return JSON.stringify(obj);
 }

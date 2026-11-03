@@ -79,11 +79,58 @@ export interface CardItem {
   created_at: string;
 }
 
+export interface CellOutputItem {
+  output_type: "stream" | "execute_result" | "display_data" | "error";
+  text?: string;
+  table_preview?: {
+    var_name: string;
+    columns: string[];
+    rows: (string | number | boolean | null)[][];
+    row_count: number;
+  };
+  plot_base64?: string;
+  error?: string;
+  result_text?: string;
+}
+
+export interface NotebookCellItem {
+  id: string;
+  cell_type: "code" | "markdown";
+  source: string;
+  outputs: CellOutputItem[];
+  execution_count?: number | null;
+  duration_ms?: number | null;
+}
+
+export interface NotebookData {
+  cells: NotebookCellItem[];
+}
+
+export interface FilterItem {
+  id: string;
+  dashboard_id: string;
+  name: string;
+  filter_type: "category" | "date_range" | "text" | "number";
+  table_id: string;
+  column_name: string;
+  default_value?: unknown;
+  created_at: string;
+}
+
+export interface ActiveFilterState {
+  [filter_id: string]: {
+    column: string;
+    operator: string;
+    value: unknown;
+  };
+}
+
 export interface DashboardDetail {
   dashboard: DashboardItem;
   tables: TableItem[];
   cards: CardItem[];
   relationships: RelationshipItem[];
+  filters: FilterItem[];
 }
 
 export interface PythonExecuteResponse {

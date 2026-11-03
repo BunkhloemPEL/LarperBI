@@ -188,7 +188,6 @@ export const CardBuilderModal: React.FC<CardBuilderModalProps> = ({
     }
 
     const { data } = queryResult;
-
     if (vizType === "smart_scalar") {
       return <SmartScalar data={data as SmartScalarItem} />;
     }

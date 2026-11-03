@@ -1,7 +1,8 @@
 import React, { useState, useRef } from "react";
 import { UploadCloud, Plus, FileSpreadsheet, LayoutGrid, Move, Check } from "lucide-react";
 import { uploadTable, deleteCard, updateDashboardLayout } from "../../services/api";
-import type { TableItem, CardItem } from "../../types/larper";
+import type { TableItem, CardItem, FilterItem } from "../../types/larper";
+import { ParameterBar } from "../parameters/ParameterBar";
 import { CanvasCardRenderer } from "./CanvasCardRenderer";
 import { CardBuilderModal } from "../CardBuilder/CardBuilderModal";
 import { GridLayout } from "../grid/GridLayout";
@@ -11,19 +12,21 @@ export interface CanvasViewProps {
   dashboardId: string;
   tables: TableItem[];
   cards: CardItem[];
+  filters: FilterItem[];
   onRefresh: () => void;
 }
-
 export const CanvasView: React.FC<CanvasViewProps> = ({
   dashboardId,
   tables,
   cards,
+  filters,
   onRefresh,
 }) => {
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [isBuilderOpen, setIsBuilderOpen] = useState<boolean>(false);
   const [isEditingLayout, setIsEditingLayout] = useState<boolean>(true);
   const [editingCard, setEditingCard] = useState<CardItem | null>(null);
+  const [activeFilterValues, setActiveFilterValues] = useState<Record<string, unknown>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleLayoutChange = async (layouts: Layout[]) => {
@@ -266,6 +269,22 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
         </div>
       </div>
 
+      {/* Metabase Replicated Filter & Parameter Bar */}
+      {tables.length > 0 && (
+        <ParameterBar
+          dashboardId={dashboardId}
+          filters={filters}
+          activeValues={activeFilterValues}
+          onFilterChange={(filterId, val) => {
+            setActiveFilterValues((prev) => ({ ...prev, [filterId]: val }));
+          }}
+          onResetAll={() => setActiveFilterValues({})}
+          tables={tables}
+          onRefreshFilters={onRefresh}
+          isEditing={isEditingLayout}
+        />
+      )}
+
       {/* Cards Grid */}
       {cards.length === 0 ? (
         <div
@@ -318,6 +337,8 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
                 setIsBuilderOpen(true);
               }}
               isEditing={isEditingLayout}
+              activeFilters={activeFilterValues}
+              dashboardFilters={filters}
             />
           )}
         />

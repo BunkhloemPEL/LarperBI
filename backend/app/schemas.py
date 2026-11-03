@@ -58,6 +58,23 @@ class RelationshipOut(BaseModel):
     cardinality: str
     created_at: str
 
+# ----------------- Filter Parameter Models -----------------
+class FilterCreate(BaseModel):
+    name: str
+    filter_type: str  # "category" | "date_range" | "text" | "number"
+    table_id: str
+    column_name: str
+    default_value: Optional[Any] = None
+
+class FilterOut(BaseModel):
+    id: str
+    dashboard_id: str
+    name: str
+    filter_type: str
+    table_id: str
+    column_name: str
+    default_value: Optional[Any] = None
+    created_at: str
 # ----------------- Card Models -----------------
 class GridLayout(BaseModel):
     x: int = 0
@@ -142,3 +159,18 @@ class SaveDerivedTableRequest(BaseModel):
     table_name: str
     dataframe_var: str
     code: Optional[str] = None
+
+# ----------------- Jupyter Notebook Models -----------------
+class ExecuteCellRequest(BaseModel):
+    cell_id: str
+    code: str
+
+class NotebookCell(BaseModel):
+    id: str
+    cell_type: str  # "code" | "markdown"
+    source: str
+    outputs: List[Dict[str, Any]] = []
+    execution_count: Optional[int] = None
+
+class NotebookData(BaseModel):
+    cells: List[NotebookCell]

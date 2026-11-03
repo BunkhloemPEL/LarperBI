@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Trash2, Pencil, Maximize2, X } from "lucide-react";
 import { runQuery } from "../../services/api";
-import type { CardItem, QueryResult } from "../../types/larper";
+import type { CardItem, QueryResult, FilterItem } from "../../types/larper";
 import type { SmartScalarItem, CardBreakdownItem } from "../../types/dashboard";
 
 import {
@@ -29,6 +29,8 @@ export interface CanvasCardRendererProps {
   onDelete: (cardId: string) => void;
   onEdit: (card: CardItem) => void;
   isEditing?: boolean;
+  activeFilters?: Record<string, unknown>;
+  dashboardFilters?: FilterItem[];
 }
 
 export const CanvasCardRenderer: React.FC<CanvasCardRendererProps> = ({
@@ -37,6 +39,8 @@ export const CanvasCardRenderer: React.FC<CanvasCardRendererProps> = ({
   onDelete,
   onEdit,
   isEditing = false,
+  activeFilters,
+  dashboardFilters,
 }) => {
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -44,7 +48,41 @@ export const CanvasCardRenderer: React.FC<CanvasCardRendererProps> = ({
 
   const fetchCardData = () => {
     setIsLoading(true);
-    runQuery(dashboardId, card.table_id, card.viz_type, card.config)
+    const mergedFilters = [...(card.config.filters || [])];
+
+    if (activeFilters && dashboardFilters) {
+      dashboardFilters.forEach((f) => {
+        const val = activeFilters[f.id];
+        if (val !== undefined && val !== null && val !== "" && !(Array.isArray(val) && val.length === 0)) {
+          if (f.filter_type === "category") {
+            mergedFilters.push({
+              column: f.column_name,
+              operator: "in",
+              value: Array.isArray(val) ? val : [val],
+            });
+          } else if (f.filter_type === "date_range") {
+            mergedFilters.push({
+              column: f.column_name,
+              operator: "date_range",
+              value: val,
+            });
+          } else if (f.filter_type === "text") {
+            mergedFilters.push({
+              column: f.column_name,
+              operator: "contains",
+              value: val,
+            });
+          }
+        }
+      });
+    }
+
+    const queryConfig = {
+      ...card.config,
+      filters: mergedFilters,
+    };
+
+    runQuery(dashboardId, card.table_id, card.viz_type, queryConfig)
       .then((res) => {
         setQueryResult(res);
       })
@@ -56,7 +94,7 @@ export const CanvasCardRenderer: React.FC<CanvasCardRendererProps> = ({
 
   useEffect(() => {
     fetchCardData();
-  }, [dashboardId, card]);
+  }, [dashboardId, card, activeFilters, dashboardFilters]);
 
   const renderVisual = (customHeight: number | string = "100%") => {
     if (isLoading) {
@@ -69,7 +107,6 @@ export const CanvasCardRenderer: React.FC<CanvasCardRendererProps> = ({
 
     const { data } = queryResult;
     const { viz_type } = card;
-
     if (viz_type === "smart_scalar") {
       return <SmartScalar data={data as SmartScalarItem} />;
     }
