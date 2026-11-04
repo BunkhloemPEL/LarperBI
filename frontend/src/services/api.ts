@@ -1,11 +1,13 @@
 import type {
   DashboardItem,
+  UploadResult,
   DashboardDetail,
   TableItem,
   CardConfig,
   RelationshipItem,
   FilterItem,
   MetricItem,
+  UploadInspection,
   TableRowsResponse,
   NotebookData,
   PythonExecuteResponse,
@@ -63,16 +65,36 @@ export async function deleteDashboard(id: string): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete dashboard");
 }
 
-export async function uploadTable(dashboardId: string, file: File): Promise<TableItem> {
+export async function inspectUpload(dashboardId: string, file: File): Promise<UploadInspection> {
   const formData = new FormData();
   formData.append("file", file);
 
-  const res = await fetch(`${API_BASE_URL}/api/v1/dashboards/${dashboardId}/upload`, {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboards/${dashboardId}/upload/inspect`, {
     method: "POST",
     body: formData,
   });
-  if (!res.ok) throw new Error("Failed to upload table");
+  if (!res.ok) throw new Error(await errorMessage(res, "Failed to inspect file"));
   return res.json();
+}
+
+export async function commitUpload(
+  dashboardId: string,
+  uploadId: string,
+  sheets: string[]
+): Promise<UploadResult> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboards/${dashboardId}/upload/commit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: jsonStringify({ upload_id: uploadId, sheets }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, "Failed to import sheets"));
+  return res.json();
+}
+
+export async function cancelUpload(dashboardId: string, uploadId: string): Promise<void> {
+  await fetch(`${API_BASE_URL}/api/v1/dashboards/${dashboardId}/upload/${uploadId}`, {
+    method: "DELETE",
+  });
 }
 
 export async function deleteTable(dashboardId: string, tableId: string): Promise<void> {

@@ -1,9 +1,12 @@
 import os
+import re
+import time
 import uuid
 import json
+from dataclasses import dataclass
 from typing import List, Dict, Any, Tuple, Optional
 import polars as pl
-from .config import DASHBOARDS_DATA_DIR
+from .config import DASHBOARDS_DATA_DIR, UPLOADS_DIR
 from .database import get_connection
 from .schemas import ColumnMetadata, TableOut
 
@@ -58,23 +61,19 @@ def profile_dataframe(df: pl.DataFrame) -> List[ColumnMetadata]:
 
     return columns
 
-def ingest_file(dashboard_id: str, filename: str, content_bytes: bytes) -> TableOut:
-    dash_dir = get_dashboard_dir(dashboard_id)
-    table_id = f"tbl_{uuid.uuid4().hex[:8]}"
-    raw_save_path = os.path.join(dash_dir, f"{table_id}_{filename}")
+@dataclass
+class IngestResult:
+    tables: List[TableOut]
+    skipped: List[str]
 
-    # Save raw file
-    with open(raw_save_path, "wb") as f:
-        f.write(content_bytes)
 
-    # Read with Polars
-    ext = os.path.splitext(filename)[1].lower()
-    if ext in [".xlsx", ".xls"]:
-        df = pl.read_excel(raw_save_path)
-    else:
-        df = pl.read_csv(raw_save_path, infer_schema_length=10000, ignore_errors=True)
+EXCEL_EXTENSIONS = {".xlsx", ".xls", ".xlsb", ".ods"}
+TEXT_EXTENSIONS = {".csv", ".tsv", ".txt"}
+PREVIEW_ROW_LIMIT = 15
+UPLOAD_TTL_SECONDS = 30 * 60
 
-    # Clean currency columns if detected (e.g. "$14.50")
+
+def _clean_currency_columns(df: pl.DataFrame) -> pl.DataFrame:
     for col in df.columns:
         if df[col].dtype == pl.String:
             sample = df[col].drop_nulls().head(5).to_list()
@@ -85,17 +84,19 @@ def ingest_file(dashboard_id: str, filename: str, content_bytes: bytes) -> Table
                     )
                 except Exception:
                     pass
+    return df
 
-    # Save as Parquet
+
+def _persist_table(dashboard_id: str, dash_dir: str, display_name: str, df: pl.DataFrame) -> TableOut:
+    table_id = f"tbl_{uuid.uuid4().hex[:8]}"
+    df = _clean_currency_columns(df)
+
     parquet_path = os.path.join(dash_dir, f"{table_id}.parquet")
     df.write_parquet(parquet_path, compression="zstd")
 
-    # Profile columns
     columns = profile_dataframe(df)
     row_count = df.shape[0]
 
-    # Save metadata to SQLite
-    display_name = os.path.splitext(filename)[0]
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -122,8 +123,272 @@ def ingest_file(dashboard_id: str, filename: str, content_bytes: bytes) -> Table
         file_path=parquet_path,
         row_count=row_count,
         columns=columns,
-        created_at=str(pl.datetime(2026, 1, 1)), # placeholder or current timestamp
+        created_at=str(pl.datetime(2026, 1, 1)),
     )
+
+
+def _sanitize_filename(filename: str) -> str:
+    return os.path.basename(filename).strip() or "data.csv"
+
+
+def _json_cell(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+def _preview_frame(df: pl.DataFrame) -> Dict[str, Any]:
+    return {
+        "columns": [str(col) for col in df.columns],
+        "preview_rows": [
+            [_json_cell(value) for value in row]
+            for row in df.head(PREVIEW_ROW_LIMIT).rows()
+        ],
+        "is_empty": df.width == 0 or df.height == 0,
+    }
+
+
+def _excel_sheet_names(path: str, filename: str) -> List[str]:
+    try:
+        import fastexcel
+    except ModuleNotFoundError as exc:
+        raise ValueError(
+            "Excel ingestion requires the optional 'fastexcel' package. "
+            "Install backend dependencies with: pip install -r requirements.txt"
+        ) from exc
+    try:
+        sheet_names = list(fastexcel.read_excel(path).sheet_names)
+    except Exception as exc:
+        raise ValueError(
+            f"Could not parse '{filename}'. The file may be corrupt or use an "
+            f"unsupported encoding. Details: {exc}"
+        ) from exc
+    if not sheet_names:
+        raise ValueError(f"'{filename}' does not contain any worksheets.")
+    return sheet_names
+
+
+def _preview_excel(path: str, filename: str) -> List[Dict[str, Any]]:
+    sheets: List[Dict[str, Any]] = []
+    for name in _excel_sheet_names(path, filename):
+        entry: Dict[str, Any] = {
+            "name": name,
+            "columns": [],
+            "preview_rows": [],
+            "is_empty": True,
+            "error": None,
+        }
+        try:
+            df = pl.read_excel(
+                path,
+                sheet_name=name,
+                read_options={"n_rows": PREVIEW_ROW_LIMIT},
+            )
+            entry.update(_preview_frame(df))
+        except Exception as exc:
+            entry["error"] = str(exc)
+        sheets.append(entry)
+    return sheets
+
+
+def _preview_text(path: str) -> List[Dict[str, Any]]:
+    df = pl.read_csv(
+        path,
+        n_rows=PREVIEW_ROW_LIMIT,
+        infer_schema_length=1000,
+        ignore_errors=True,
+    )
+    if df.width == 0:
+        raise ValueError("No columns were found in the uploaded file.")
+    preview = _preview_frame(df)
+    return [{"name": "CSV", **preview, "error": None}]
+
+
+def _upload_meta_path(upload_id: str) -> str:
+    return os.path.join(UPLOADS_DIR, f"{upload_id}.json")
+
+
+def _cleanup_expired_uploads() -> None:
+    now = time.time()
+    try:
+        entries = os.listdir(UPLOADS_DIR)
+    except OSError:
+        return
+    for entry in entries:
+        if not entry.endswith(".json"):
+            continue
+        meta_path = os.path.join(UPLOADS_DIR, entry)
+        try:
+            with open(meta_path, "r", encoding="utf-8") as fh:
+                meta = json.load(fh)
+        except Exception:
+            continue
+        if now - float(meta.get("created_at", 0)) <= UPLOAD_TTL_SECONDS:
+            continue
+        for candidate in (meta.get("path"), meta_path):
+            if candidate and os.path.exists(candidate):
+                try:
+                    os.remove(candidate)
+                except OSError:
+                    pass
+
+
+def _load_pending_upload(dashboard_id: str, upload_id: str) -> Dict[str, Any]:
+    if not re.fullmatch(r"upl_[0-9a-f]{16,64}", upload_id or ""):
+        raise ValueError("Invalid upload session id.")
+    meta_path = _upload_meta_path(upload_id)
+    if not os.path.exists(meta_path):
+        raise ValueError("Upload session not found or expired. Please choose the file again.")
+    try:
+        with open(meta_path, "r", encoding="utf-8") as fh:
+            meta = json.load(fh)
+    except Exception as exc:
+        raise ValueError("Upload session is unreadable. Please choose the file again.") from exc
+    if meta.get("dashboard_id") != dashboard_id:
+        raise ValueError("Upload session does not belong to this dashboard.")
+    if time.time() - float(meta.get("created_at", 0)) > UPLOAD_TTL_SECONDS:
+        _discard_pending_upload(meta)
+        raise ValueError("Upload session expired. Please choose the file again.")
+    if not os.path.exists(meta.get("path", "")):
+        raise ValueError("Uploaded file is no longer available. Please choose it again.")
+    return meta
+
+
+def _discard_pending_upload(meta: Dict[str, Any]) -> None:
+    for candidate in (meta.get("path"), _upload_meta_path(meta.get("upload_id", ""))):
+        if candidate and os.path.exists(candidate):
+            try:
+                os.remove(candidate)
+            except OSError:
+                pass
+
+
+def cancel_upload(dashboard_id: str, upload_id: str) -> None:
+    meta = _load_pending_upload(dashboard_id, upload_id)
+    _discard_pending_upload(meta)
+
+
+def inspect_upload(dashboard_id: str, filename: str, content_bytes: bytes) -> Dict[str, Any]:
+    _cleanup_expired_uploads()
+    if not content_bytes:
+        raise ValueError("The uploaded file is empty.")
+
+    safe_filename = _sanitize_filename(filename)
+    ext = os.path.splitext(safe_filename)[1].lower()
+    if ext not in EXCEL_EXTENSIONS | TEXT_EXTENSIONS:
+        raise ValueError(
+            f"Unsupported file type '{ext or safe_filename}'. "
+            "Upload a CSV, XLSX, XLS, XLSB, or ODS file."
+        )
+
+    upload_id = f"upl_{uuid.uuid4().hex}"
+    upload_path = os.path.join(UPLOADS_DIR, f"{upload_id}_{safe_filename}")
+    with open(upload_path, "wb") as f:
+        f.write(content_bytes)
+
+    try:
+        if ext in EXCEL_EXTENSIONS:
+            sheets = _preview_excel(upload_path, safe_filename)
+        else:
+            try:
+                sheets = _preview_text(upload_path)
+            except Exception as exc:
+                raise ValueError(
+                    f"Could not parse '{safe_filename}'. The file may be corrupt or "
+                    f"use an unsupported encoding. Details: {exc}"
+                ) from exc
+
+        meta = {
+            "upload_id": upload_id,
+            "dashboard_id": dashboard_id,
+            "filename": safe_filename,
+            "path": upload_path,
+            "created_at": time.time(),
+        }
+        with open(_upload_meta_path(upload_id), "w", encoding="utf-8") as fh:
+            json.dump(meta, fh)
+        return {
+            "upload_id": upload_id,
+            "filename": safe_filename,
+            "is_excel": ext in EXCEL_EXTENSIONS,
+            "sheets": sheets,
+        }
+    except Exception:
+        if os.path.exists(upload_path):
+            os.remove(upload_path)
+        raise
+
+
+def commit_upload(dashboard_id: str, upload_id: str, selected_sheets: List[str]) -> IngestResult:
+    meta = _load_pending_upload(dashboard_id, upload_id)
+    path = meta["path"]
+    safe_filename = meta["filename"]
+    stem = os.path.splitext(safe_filename)[0]
+    ext = os.path.splitext(safe_filename)[1].lower()
+
+    dash_dir = get_dashboard_dir(dashboard_id)
+    persisted: List[TableOut] = []
+    skipped: List[str] = []
+
+    try:
+        if ext in EXCEL_EXTENSIONS:
+            all_names = _excel_sheet_names(path, safe_filename)
+            if not selected_sheets:
+                raise ValueError("Select at least one sheet to import.")
+            selected = selected_sheets
+            unknown = [name for name in selected if name not in all_names]
+            if unknown:
+                raise ValueError(
+                    "Unknown sheet(s): " + ", ".join(f"'{name}'" for name in unknown)
+                )
+
+            frames: List[Tuple[str, pl.DataFrame]] = []
+            for name in [name for name in all_names if name in selected]:
+                try:
+                    sheet_df = pl.read_excel(path, sheet_name=name)
+                except Exception as exc:
+                    skipped.append(f"Sheet '{name}' was skipped: {exc}")
+                    continue
+                if sheet_df.width == 0 or sheet_df.height == 0:
+                    skipped.append(f"Sheet '{name}' was skipped: no data rows.")
+                    continue
+                frames.append((name, sheet_df))
+
+            if not frames:
+                raise ValueError(
+                    "None of the selected sheets contain data. " + " ".join(skipped)
+                )
+
+            multi_sheet = len(all_names) > 1
+            for name, sheet_df in frames:
+                display_name = f"{stem} — {name}" if multi_sheet else stem
+                persisted.append(
+                    _persist_table(dashboard_id, dash_dir, display_name, sheet_df)
+                )
+
+        elif ext in TEXT_EXTENSIONS:
+            df = pl.read_csv(path, infer_schema_length=10000, ignore_errors=True)
+            if df.width == 0:
+                raise ValueError("No columns were found in the uploaded file.")
+            if df.height == 0:
+                raise ValueError("The uploaded file has no data rows.")
+            persisted.append(_persist_table(dashboard_id, dash_dir, stem, df))
+
+        else:
+            raise ValueError(
+                f"Unsupported file type '{ext or safe_filename}'. "
+                "Upload a CSV, XLSX, XLS, XLSB, or ODS file."
+            )
+    except Exception as exc:
+        if isinstance(exc, ValueError):
+            raise
+        raise ValueError(
+            f"Could not import '{safe_filename}'. Details: {exc}"
+        ) from exc
+
+    _discard_pending_upload(meta)
+    return IngestResult(tables=persisted, skipped=skipped)
+
 
 def _table_out_from_row(r: Any, cols_data: List[Dict[str, Any]]) -> TableOut:
     keys = set(r.keys())

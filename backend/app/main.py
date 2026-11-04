@@ -12,6 +12,9 @@ from .schemas import (
     DashboardUpdate,
     DashboardOut,
     TableOut,
+    UploadResult,
+    UploadInspection,
+    UploadCommit,
     RelationshipCreate,
     RelationshipOut,
     CardCreate,
@@ -38,7 +41,9 @@ from .schemas import (
     TableRowsResponse,
 )
 from .storage import (
-    ingest_file,
+    inspect_upload,
+    commit_upload,
+    cancel_upload,
     list_dashboard_tables,
     get_table_by_id,
     get_dashboard_dir,
@@ -253,11 +258,34 @@ def delete_dashboard(id: str):
     return {"status": "deleted", "id": id}
 
 # ----------------- Table Ingestion Endpoints -----------------
-@app.post("/api/v1/dashboards/{id}/upload", response_model=TableOut)
-async def upload_table(id: str, file: UploadFile = File(...)):
+@app.post("/api/v1/dashboards/{id}/upload/inspect", response_model=UploadInspection)
+async def inspect_upload_endpoint(id: str, file: UploadFile = File(...)):
     contents = await file.read()
-    table = ingest_file(id, file.filename or "data.csv", contents)
-    return table
+    try:
+        return inspect_upload(id, file.filename or "data.csv", contents)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Upload inspection failed: {exc}") from exc
+
+@app.post("/api/v1/dashboards/{id}/upload/commit", response_model=UploadResult)
+def commit_upload_endpoint(id: str, payload: UploadCommit):
+    try:
+        return commit_upload(id, payload.upload_id, payload.sheets)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Upload failed: {exc}") from exc
+
+@app.delete("/api/v1/dashboards/{id}/upload/{upload_id}")
+def cancel_upload_endpoint(id: str, upload_id: str):
+    try:
+        cancel_upload(id, upload_id)
+        return {"status": "cancelled", "upload_id": upload_id}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 @app.get("/api/v1/dashboards/{id}/tables", response_model=List[TableOut])
 def get_tables(id: str):

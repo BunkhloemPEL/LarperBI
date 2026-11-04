@@ -1,7 +1,15 @@
 import React, { useState, useRef } from "react";
 import { UploadCloud, Plus, FileSpreadsheet, LayoutGrid, Move, Check } from "lucide-react";
-import { uploadTable, deleteCard, updateDashboardLayout } from "../../services/api";
-import type { TableItem, CardItem, FilterItem, MetricItem } from "../../types/larper";
+import {
+  inspectUpload,
+  commitUpload,
+  cancelUpload,
+  deleteCard,
+  updateDashboardLayout,
+} from "../../services/api";
+import { SheetPickerModal } from "./SheetPickerModal";
+import { ConfirmDialog } from "../common/ConfirmDialog";
+import type { TableItem, CardItem, FilterItem, MetricItem, UploadInspection } from "../../types/larper";
 import { ParameterBar } from "../parameters/ParameterBar";
 import { CanvasCardRenderer } from "./CanvasCardRenderer";
 import { CardBuilderModal } from "../CardBuilder/CardBuilderModal";
@@ -15,6 +23,7 @@ export interface CanvasViewProps {
   filters: FilterItem[];
   metrics: MetricItem[];
   onRefresh: () => void;
+  onLayoutSaved?: (layouts: { id: string; x: number; y: number; w: number; h: number }[]) => void;
 }
 export const CanvasView: React.FC<CanvasViewProps> = ({
   dashboardId,
@@ -23,12 +32,16 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
   filters,
   metrics,
   onRefresh,
+  onLayoutSaved,
 }) => {
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [isBuilderOpen, setIsBuilderOpen] = useState<boolean>(false);
   const [isEditingLayout, setIsEditingLayout] = useState<boolean>(true);
   const [editingCard, setEditingCard] = useState<CardItem | null>(null);
   const [activeFilterValues, setActiveFilterValues] = useState<Record<string, unknown>>({});
+  const [pendingInspection, setPendingInspection] = useState<UploadInspection | null>(null);
+  const [cardToDelete, setCardToDelete] = useState<string | null>(null);
+  const [isDeletingCard, setIsDeletingCard] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleLayoutChange = async (layouts: Layout[]) => {
@@ -41,6 +54,7 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
     }));
     try {
       await updateDashboardLayout(dashboardId, payload);
+      onLayoutSaved?.(payload);
     } catch (err) {
       console.error("Failed to save layout:", err);
     }
@@ -49,13 +63,57 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
   const handleFileUpload = async (file: File) => {
     setIsUploading(true);
     try {
-      await uploadTable(dashboardId, file);
+      const inspection = await inspectUpload(dashboardId, file);
+      if (inspection.is_excel) {
+        setPendingInspection(inspection);
+        return;
+      }
+      const result = await commitUpload(
+        dashboardId,
+        inspection.upload_id,
+        inspection.sheets.map((sheet) => sheet.name)
+      );
       onRefresh();
+      if (result.skipped.length > 0) {
+        alert(
+          `Imported ${result.tables.length} table(s).\n\n` + result.skipped.join("\n")
+        );
+      }
     } catch (err: unknown) {
       alert(`Upload failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handleConfirmSheets = async (sheets: string[]) => {
+    if (!pendingInspection) return;
+    setIsUploading(true);
+    try {
+      const result = await commitUpload(
+        dashboardId,
+        pendingInspection.upload_id,
+        sheets
+      );
+      setPendingInspection(null);
+      onRefresh();
+      if (result.skipped.length > 0) {
+        alert(
+          `Imported ${result.tables.length} table(s).\n\n` + result.skipped.join("\n")
+        );
+      }
+    } catch (err: unknown) {
+      alert(`Upload failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleCancelSheets = () => {
+    if (pendingInspection) {
+      void cancelUpload(dashboardId, pendingInspection.upload_id);
+    }
+    setPendingInspection(null);
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -65,13 +123,21 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
     }
   };
 
-  const handleDeleteCard = async (cardId: string) => {
-    if (!confirm("Delete this visual card?")) return;
+  const handleDeleteCard = (cardId: string) => {
+    setCardToDelete(cardId);
+  };
+
+  const handleConfirmDeleteCard = async () => {
+    if (!cardToDelete) return;
+    setIsDeletingCard(true);
     try {
-      await deleteCard(dashboardId, cardId);
+      await deleteCard(dashboardId, cardToDelete);
+      setCardToDelete(null);
       onRefresh();
     } catch (err: unknown) {
       alert(`Failed to delete card: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsDeletingCard(false);
     }
   };
 
@@ -152,6 +218,16 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
           <FileSpreadsheet size={16} />
           {isUploading ? "Ingesting Table..." : "Browse Files"}
         </button>
+
+        {pendingInspection && (
+          <SheetPickerModal
+            filename={pendingInspection.filename}
+            sheets={pendingInspection.sheets}
+            isImporting={isUploading}
+            onCancel={handleCancelSheets}
+            onConfirm={handleConfirmSheets}
+          />
+        )}
       </div>
     );
   }
@@ -358,6 +434,26 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
         }}
         onCardCreated={onRefresh}
         editingCard={editingCard}
+      />
+
+      {pendingInspection && (
+        <SheetPickerModal
+          filename={pendingInspection.filename}
+          sheets={pendingInspection.sheets}
+          isImporting={isUploading}
+          onCancel={handleCancelSheets}
+          onConfirm={handleConfirmSheets}
+        />
+      )}
+
+      <ConfirmDialog
+        isOpen={cardToDelete !== null}
+        title="Delete this visual card?"
+        message="This removes the card from the dashboard. The underlying table and other cards stay untouched."
+        confirmLabel="Delete card"
+        isBusy={isDeletingCard}
+        onCancel={() => setCardToDelete(null)}
+        onConfirm={handleConfirmDeleteCard}
       />
     </div>
   );

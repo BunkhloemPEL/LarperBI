@@ -49,6 +49,31 @@ class TableOut(BaseModel):
     pos_w: Optional[int] = None
     pos_h: Optional[int] = None
 
+
+class UploadResult(BaseModel):
+    tables: List[TableOut]
+    skipped: List[str] = []
+
+
+class SheetPreview(BaseModel):
+    name: str
+    columns: List[str] = []
+    preview_rows: List[List[Any]] = []
+    is_empty: bool = False
+    error: Optional[str] = None
+
+
+class UploadInspection(BaseModel):
+    upload_id: str
+    filename: str
+    is_excel: bool
+    sheets: List[SheetPreview]
+
+
+class UploadCommit(BaseModel):
+    upload_id: str
+    sheets: List[str] = []
+
 # ----------------- Data Modeling: New Table / New Column -----------------
 class TableColumnCreate(BaseModel):
     name: str

@@ -78,6 +78,25 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleCardsLayoutSaved = useCallback(
+    (layouts: { id: string; x: number; y: number; w: number; h: number }[]) => {
+      setDashboardDetail((prev) => {
+        if (!prev) return prev;
+        const byId = new Map(layouts.map((layout) => [layout.id, layout]));
+        return {
+          ...prev,
+          cards: prev.cards.map((card) => {
+            const layout = byId.get(card.id);
+            return layout
+              ? { ...card, grid_layout: { x: layout.x, y: layout.y, w: layout.w, h: layout.h } }
+              : card;
+          }),
+        };
+      });
+    },
+    []
+  );
+
   // Title update
   const handleTitleBlur = async () => {
     setIsEditingTitle(false);
@@ -244,6 +263,7 @@ export const App: React.FC = () => {
                 filters={dashboardDetail.filters || []}
                 metrics={dashboardDetail.metrics || []}
                 onRefresh={loadActiveDashboard}
+                onLayoutSaved={handleCardsLayoutSaved}
               />
             )}
 

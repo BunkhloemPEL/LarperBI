@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Plus, LayoutDashboard, Database, Layers, Trash2, ArrowUpRight } from "lucide-react";
 import type { DashboardItem } from "../../types/larper";
+import { ConfirmDialog } from "../common/ConfirmDialog";
 
 export interface DashboardListProps {
   dashboards: DashboardItem[];
@@ -21,6 +22,8 @@ export const DashboardList: React.FC<DashboardListProps> = ({
   const [newTitle, setNewTitle] = useState<string>("Untitled Dashboard");
   const [newDesc, setNewDesc] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [dashboardToDelete, setDashboardToDelete] = useState<DashboardItem | null>(null);
+  const [isDeletingDashboard, setIsDeletingDashboard] = useState<boolean>(false);
 
   const handleCreate = async () => {
     if (!newTitle.trim()) return;
@@ -34,6 +37,19 @@ export const DashboardList: React.FC<DashboardListProps> = ({
       alert(`Failed to create dashboard: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleConfirmDeleteDashboard = async () => {
+    if (!dashboardToDelete) return;
+    setIsDeletingDashboard(true);
+    try {
+      await onDeleteDashboard(dashboardToDelete.id);
+      setDashboardToDelete(null);
+    } catch (err: unknown) {
+      alert(`Failed to delete dashboard: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsDeletingDashboard(false);
     }
   };
 
@@ -157,9 +173,7 @@ export const DashboardList: React.FC<DashboardListProps> = ({
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (confirm(`Delete dashboard "${dash.title}" and its tables?`)) {
-                        onDeleteDashboard(dash.id);
-                      }
+                      setDashboardToDelete(dash);
                     }}
                     title="Delete Dashboard"
                     style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", padding: "4px" }}
@@ -277,6 +291,16 @@ export const DashboardList: React.FC<DashboardListProps> = ({
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={dashboardToDelete !== null}
+        title={`Delete dashboard "${dashboardToDelete?.title ?? ""}"?`}
+        message="This permanently removes the dashboard, its visual cards, and every uploaded or derived table."
+        confirmLabel="Delete dashboard"
+        isBusy={isDeletingDashboard}
+        onCancel={() => setDashboardToDelete(null)}
+        onConfirm={handleConfirmDeleteDashboard}
+      />
     </div>
   );
 };

@@ -19,7 +19,7 @@ Existing BI tools force a tradeoff:
 - **Desktop BI (Power BI, Tableau)**: Great drag-and-drop authoring, but proprietary, platform-locked, heavy, and isolated from modern Python data workflows.
 
 **LarperBI** bridges this gap:
-1. **Start Blank & Drop Data**: Create a blank dashboard canvas and immediately drag-and-drop CSV or Excel files. No database setup required.
+1. **Start Blank & Drop Data**: Create a blank dashboard canvas and immediately drag-and-drop CSV or Excel files. Excel workbooks open a Power BI-style sheet picker with previews, so you choose exactly which worksheets to import. No database setup required.
 2. **Metabase Aesthetics**: Replicates Metabase's polished 18-column grid, 8-accent color ramp, typography, and clean card chrome.
 3. **Metabase Parameter Filter Bar**: Dedicated top filter bar with interactive pill triggers, category multi-select popovers, date ranges, and live cross-filtering across all cards.
 4. **Notebook (EDA)**: Cell-based Python notebook styled with LarperBI’s Metabase design tokens — per-cell execution (`In [ ]` / `Out [ ]`), stateful kernel memory, CodeMirror editor with `# Enter Python code` placeholder, execution timers, and one-click model materialization (`[ ⚡ Save as Derived Table ]`).
@@ -161,7 +161,9 @@ Fully re-engineered using **Apache ECharts 6.x** and **Mantine / CSS design toke
 cd LarperBI/backend
 
 # Install Python dependencies
-pip install fastapi uvicorn polars pydantic requests
+pip install -r requirements.txt
+# Excel ingestion (.xlsx/.xls/.xlsb/.ods) uses Polars' fastexcel engine,
+# included above; CSV uploads need no extra parser.
 
 # Start the API server on port 8001
 python3 -m uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload
@@ -254,7 +256,9 @@ LarperBI/
 | `GET` | `/api/v1/dashboards/{id}` | Get dashboard detail with tables, cards, filters, and relationships |
 | `PUT` | `/api/v1/dashboards/{id}` | Rename or update dashboard metadata |
 | `DELETE` | `/api/v1/dashboards/{id}` | Delete dashboard and cascade-delete its Parquet storage |
-| `POST` | `/api/v1/dashboards/{id}/upload` | Upload CSV/Excel and auto-profile into Parquet |
+| `POST` | `/api/v1/dashboards/{id}/upload/inspect` | Stage a CSV/Excel file and return sheet names, columns, and preview rows |
+| `POST` | `/api/v1/dashboards/{id}/upload/commit` | Import the selected sheets (`upload_id`, `sheets`) → `{ tables, skipped }` |
+| `DELETE` | `/api/v1/dashboards/{id}/upload/{upload_id}` | Discard a staged upload without importing |
 | `GET` | `/api/v1/dashboards/{id}/filters` | List dashboard filter parameters |
 | `POST` | `/api/v1/dashboards/{id}/filters` | Add a new filter parameter |
 | `DELETE` | `/api/v1/dashboards/{id}/filters/{filter_id}` | Remove a filter parameter |

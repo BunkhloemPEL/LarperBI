@@ -18,9 +18,19 @@ def seed():
     if os.path.exists(archive_cards):
         with open(archive_cards, "rb") as f:
             files = {"file": ("cards_portfolio.csv", f, "text/csv")}
-            up_res = requests.post(f"{API_URL}/dashboards/{dash_id}/upload", files=files)
-            table_id = up_res.json()["id"]
-            print(f"Uploaded cards table: {table_id} ({up_res.json()['row_count']} rows)")
+            inspection = requests.post(
+                f"{API_URL}/dashboards/{dash_id}/upload/inspect", files=files
+            ).json()
+            up_res = requests.post(
+                f"{API_URL}/dashboards/{dash_id}/upload/commit",
+                json={
+                    "upload_id": inspection["upload_id"],
+                    "sheets": [sheet["name"] for sheet in inspection["sheets"]],
+                },
+            )
+            uploaded = up_res.json()["tables"][0]
+            table_id = uploaded["id"]
+            print(f"Uploaded cards table: {table_id} ({uploaded['row_count']} rows)")
 
         # Create Card 1: Donut chart of Card Brands
         requests.post(f"{API_URL}/dashboards/{dash_id}/cards", json={

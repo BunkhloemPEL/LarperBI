@@ -27,6 +27,26 @@ export interface TableItem {
   pos_h?: number | null;
 }
 
+export interface SheetPreview {
+  name: string;
+  columns: string[];
+  preview_rows: (string | number | boolean | null)[][];
+  is_empty: boolean;
+  error?: string | null;
+}
+
+export interface UploadInspection {
+  upload_id: string;
+  filename: string;
+  is_excel: boolean;
+  sheets: SheetPreview[];
+}
+
+export interface UploadResult {
+  tables: TableItem[];
+  skipped: string[];
+}
+
 export interface DashboardItem {
   id: string;
   title: string;

@@ -38,6 +38,9 @@ export const GridLayout: React.FC<GridLayoutProps> = ({
 
   const handleLayoutChange = (newLayout: Layout[]) => {
     setCurrentLayout(newLayout);
+  };
+
+  const commitLayout = (newLayout: Layout[]) => {
     if (isEditing) {
       onLayoutChange(newLayout);
     }
@@ -55,9 +58,15 @@ export const GridLayout: React.FC<GridLayoutProps> = ({
         isResizable={isEditing}
         onLayoutChange={handleLayoutChange}
         onDragStart={() => document.body.classList.add("react-grid-layout-dragging")}
-        onDragStop={() => document.body.classList.remove("react-grid-layout-dragging")}
+        onDragStop={(layout) => {
+          document.body.classList.remove("react-grid-layout-dragging");
+          commitLayout(layout);
+        }}
         onResizeStart={() => document.body.classList.add("react-grid-layout-dragging")}
-        onResizeStop={() => document.body.classList.remove("react-grid-layout-dragging")}
+        onResizeStop={(layout) => {
+          document.body.classList.remove("react-grid-layout-dragging");
+          commitLayout(layout);
+        }}
         draggableCancel="button, select, input, textarea, a, [data-dontdrag]"
       >
         {cards.map((card) => (
