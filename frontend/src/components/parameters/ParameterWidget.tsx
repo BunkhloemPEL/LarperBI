@@ -89,7 +89,12 @@ export const ParameterWidget: React.FC<ParameterWidgetProps> = ({
   return (
     <div style={{ position: "relative" }} ref={popoverRef}>
       {/* Parameter Pill Button */}
-      <div
+      <button
+        type="button"
+        role="button"
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        aria-label={`${filter.name}: ${displayValueStr}`}
         className={`${styles.filterPill} ${hasValue ? styles.pillActive : ""}`}
         onClick={() => setIsOpen(!isOpen)}
       >
@@ -130,7 +135,7 @@ export const ParameterWidget: React.FC<ParameterWidgetProps> = ({
             <X size={12} />
           </button>
         )}
-      </div>
+      </button>
 
       {/* Popover Dropdown */}
       {isOpen && (

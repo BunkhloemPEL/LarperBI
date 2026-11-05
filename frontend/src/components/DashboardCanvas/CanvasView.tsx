@@ -9,7 +9,7 @@ import {
 } from "../../services/api";
 import { SheetPickerModal } from "./SheetPickerModal";
 import { ConfirmDialog } from "../common/ConfirmDialog";
-import type { TableItem, CardItem, FilterItem, MetricItem, UploadInspection } from "../../types/larper";
+import type { TableItem, CardItem, FilterItem, MetricItem, UploadInspection, RelationshipItem } from "../../types/larper";
 import { ParameterBar } from "../parameters/ParameterBar";
 import { CanvasCardRenderer } from "./CanvasCardRenderer";
 import { CardBuilderModal } from "../CardBuilder/CardBuilderModal";
@@ -22,6 +22,7 @@ export interface CanvasViewProps {
   cards: CardItem[];
   filters: FilterItem[];
   metrics: MetricItem[];
+  relationships?: RelationshipItem[];
   onRefresh: () => void;
   onLayoutSaved?: (layouts: { id: string; x: number; y: number; w: number; h: number }[]) => void;
 }
@@ -31,6 +32,7 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
   cards,
   filters,
   metrics,
+  relationships = [],
   onRefresh,
   onLayoutSaved,
 }) => {
@@ -187,7 +189,7 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
         <input
           ref={fileInputRef}
           type="file"
-          accept=".csv,.xlsx,.xls"
+          accept=".csv,.xlsx,.xls,.json"
           style={{ display: "none" }}
           onChange={(e) => {
             if (e.target.files && e.target.files[0]) {
@@ -263,7 +265,7 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv,.xlsx,.xls"
+            accept=".csv,.xlsx,.xls,.json"
             style={{ display: "none" }}
             onChange={(e) => {
               if (e.target.files && e.target.files[0]) {
@@ -426,6 +428,7 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
       <CardBuilderModal
         dashboardId={dashboardId}
         tables={tables}
+        relationships={relationships}
         metrics={metrics}
         isOpen={isBuilderOpen}
         onClose={() => {

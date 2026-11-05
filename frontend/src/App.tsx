@@ -17,9 +17,15 @@ import { ModelView } from "./components/ModelView/ModelView";
 import { VisualGallery } from "./components/VisualGallery";
 import { DashboardSidebar } from "./components/layout/DashboardSidebar";
 
+const getInitialDashboardId = (): string | null => {
+  const hash = typeof window !== "undefined" ? window.location.hash : "";
+  const match = hash.match(/^#\/dashboard\/([^/?]+)/);
+  return match ? match[1] : null;
+};
+
 export const App: React.FC = () => {
   const [dashboards, setDashboards] = useState<DashboardItem[]>([]);
-  const [activeDashboardId, setActiveDashboardId] = useState<string | null>(null);
+  const [activeDashboardId, setActiveDashboardId] = useState<string | null>(getInitialDashboardId);
   const [dashboardDetail, setDashboardDetail] = useState<DashboardDetail | null>(null);
   const [activeTab, setActiveTab] = useState<"canvas" | "data" | "python_lab" | "model" | "gallery">("canvas");
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -60,6 +66,29 @@ export const App: React.FC = () => {
   useEffect(() => {
     loadActiveDashboard();
   }, [loadActiveDashboard]);
+  // Synchronize activeDashboardId with URL hash for refresh survival and deep linking
+  useEffect(() => {
+    if (activeDashboardId) {
+      if (window.location.hash !== `#/dashboard/${activeDashboardId}`) {
+        window.location.hash = `#/dashboard/${activeDashboardId}`;
+      }
+    } else {
+      if (window.location.hash) {
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      }
+    }
+  }, [activeDashboardId]);
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const match = window.location.hash.match(/^#\/dashboard\/([^/?]+)/);
+      const nextId = match ? match[1] : null;
+      setActiveDashboardId((prev) => (prev !== nextId ? nextId : prev));
+    };
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
+
 
   // Create Dashboard Action
   const handleCreateDashboard = async (title: string, description?: string) => {
@@ -262,6 +291,7 @@ export const App: React.FC = () => {
                 cards={dashboardDetail.cards}
                 filters={dashboardDetail.filters || []}
                 metrics={dashboardDetail.metrics || []}
+                relationships={dashboardDetail.relationships || []}
                 onRefresh={loadActiveDashboard}
                 onLayoutSaved={handleCardsLayoutSaved}
               />

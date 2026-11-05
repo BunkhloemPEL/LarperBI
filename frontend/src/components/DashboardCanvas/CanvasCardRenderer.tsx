@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import dashCardStyles from "../metabase-viz/DashCard/DashCard.module.css";
 import { Trash2, Pencil, Maximize2, X } from "lucide-react";
 import { runQuery } from "../../services/api";
 import type { CardItem, QueryResult, FilterItem } from "../../types/larper";
@@ -20,6 +21,8 @@ import {
   type WaterfallStep,
   type FunnelStep,
   type TreemapNode,
+  CardEmptyState,
+  CardErrorView,
 } from "../metabase-viz";
 import { ChartErrorBoundary } from "../metabase-viz/ChartErrorBoundary";
 
@@ -43,11 +46,39 @@ export const CanvasCardRenderer: React.FC<CanvasCardRendererProps> = ({
   dashboardFilters,
 }) => {
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [queryError, setQueryError] = useState<string | null>(null);
+  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
+  const [isRevalidating, setIsRevalidating] = useState<boolean>(false);
   const [isZoomed, setIsZoomed] = useState<boolean>(false);
+  const hasLoadedOnceRef = useRef<boolean>(false);
 
-  const fetchCardData = () => {
-    setIsLoading(true);
+  // Close zoom modal on Escape key
+  useEffect(() => {
+    if (!isZoomed) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsZoomed(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isZoomed]);
+
+  // Serialize query parameters to prevent layout coordinate updates [x,y,w,h] from triggering queries
+  const queryHash = useMemo(() => {
+    const filterEntries = (dashboardFilters || []).map((f) => [f.id, f.column_name, activeFilters?.[f.id] ?? null]);
+    return `${dashboardId}|${card.table_id}|${card.viz_type}|${JSON.stringify(card.config)}|${JSON.stringify(filterEntries)}`;
+  }, [dashboardId, card.table_id, card.viz_type, card.config, activeFilters, dashboardFilters]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    if (!hasLoadedOnceRef.current) {
+      setIsInitialLoading(true);
+    } else {
+      setIsRevalidating(true);
+    }
+
     const mergedFilters = [...(card.config.filters || [])];
 
     if (activeFilters && dashboardFilters) {
@@ -84,31 +115,59 @@ export const CanvasCardRenderer: React.FC<CanvasCardRendererProps> = ({
 
     runQuery(dashboardId, card.table_id, card.viz_type, queryConfig)
       .then((res) => {
-        setQueryResult(res);
+        if (!isCancelled) {
+          setQueryResult(res);
+          setQueryError(null);
+          hasLoadedOnceRef.current = true;
+        }
       })
-      .catch((err) => console.error(`Error loading card ${card.id}:`, err))
+      .catch((err) => {
+        if (!isCancelled) {
+          console.error(`Error loading card ${card.id}:`, err);
+          setQueryError(err instanceof Error ? err.message : String(err));
+        }
+      })
       .finally(() => {
-        setIsLoading(false);
+        if (!isCancelled) {
+          setIsInitialLoading(false);
+          setIsRevalidating(false);
+        }
       });
-  };
 
-  useEffect(() => {
-    fetchCardData();
-  }, [dashboardId, card, activeFilters, dashboardFilters]);
+    return () => {
+      isCancelled = true;
+    };
+  }, [queryHash]);
 
-  const renderVisual = (customHeight: number | string = "100%") => {
-    if (isLoading) {
+  const renderVisual = (customHeight: number | string = "100%", isZoom: boolean = false) => {
+    if (isInitialLoading) {
       return null;
     }
 
+    if (queryError) {
+      return (
+        <CardErrorView
+          error={queryError}
+          onRetry={() => {
+            hasLoadedOnceRef.current = false;
+            setIsInitialLoading(true);
+            setQueryError(null);
+          }}
+        />
+      );
+    }
+
     if (!queryResult || !queryResult.data) {
-      return <div style={{ color: "#94a3b8", textAlign: "center", padding: "2rem" }}>No data to display.</div>;
+      const hasActiveFilters = Object.values(activeFilters || {}).some(
+        (v) => v !== undefined && v !== null && v !== "" && !(Array.isArray(v) && v.length === 0)
+      );
+      return <CardEmptyState isFiltered={hasActiveFilters} />;
     }
 
     const { data } = queryResult;
     const { viz_type } = card;
     if (viz_type === "smart_scalar") {
-      return <SmartScalar data={data as SmartScalarItem} />;
+      return <SmartScalar data={data as SmartScalarItem} isZoomed={isZoom} />;
     }
     if (viz_type === "donut") {
       return (
@@ -157,80 +216,44 @@ export const CanvasCardRenderer: React.FC<CanvasCardRendererProps> = ({
 
   return (
     <>
-      <DashCard title={card.title} isLoading={isLoading}>
-        {/* Card Header Action Buttons */}
-        <div
-          data-dontdrag="true"
-          style={{ position: "absolute", top: 10, right: 10, zIndex: 35, display: "flex", alignItems: "center", gap: "6px" }}
-        >
-          {/* Zoom / Maximize Fullscreen Button */}
-          <button
-            type="button"
-            data-dontdrag="true"
-            onClick={() => setIsZoomed(true)}
-            title="Zoom / Expand to Fullscreen"
-            style={{
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              color: "#94a3b8",
-              padding: "2px",
-              borderRadius: "4px",
-              display: "inline-flex",
-              alignItems: "center",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--mb-color-brand)")}
-            onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
-          >
-            <Maximize2 size={13} />
-          </button>
-
-          {/* Edit Card Button */}
-          <button
-            type="button"
-            data-dontdrag="true"
-            onClick={() => onEdit(card)}
-            title="Edit Visual Card"
-            style={{
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              color: "#94a3b8",
-              padding: "2px",
-              borderRadius: "4px",
-              display: "inline-flex",
-              alignItems: "center",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--mb-color-brand)")}
-            onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
-          >
-            <Pencil size={13} />
-          </button>
-
-          {/* Delete Card Button */}
-          <button
-            type="button"
-            data-dontdrag="true"
-            onClick={() => onDelete(card.id)}
-            title="Delete Card"
-            style={{
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              color: "#94a3b8",
-              padding: "2px",
-              borderRadius: "4px",
-              display: "inline-flex",
-              alignItems: "center",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "#dc2626")}
-            onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
-          >
-            <Trash2 size={13} />
-          </button>
-        </div>
-
-        <ChartErrorBoundary onReset={fetchCardData}>
+      <DashCard
+        title={card.title}
+        vizType={card.viz_type}
+        isLoading={isInitialLoading}
+        isRevalidating={isRevalidating}
+        actions={
+          <>
+            <button
+              type="button"
+              data-dontdrag="true"
+              onClick={() => setIsZoomed(true)}
+              title="Zoom / Expand to Fullscreen"
+              className={dashCardStyles.actionBtn}
+            >
+              <Maximize2 size={13} />
+            </button>
+            <button
+              type="button"
+              data-dontdrag="true"
+              onClick={() => onEdit(card)}
+              title="Edit Visual Card"
+              className={dashCardStyles.actionBtn}
+            >
+              <Pencil size={13} />
+            </button>
+            <button
+              type="button"
+              data-dontdrag="true"
+              onClick={() => onDelete(card.id)}
+              title="Delete Card"
+              className={dashCardStyles.actionBtn}
+            >
+              <Trash2 size={13} />
+            </button>
+          </>
+        }
+      >
+        <ChartErrorBoundary onReset={() => setQueryResult(null)}>
           <div style={{ pointerEvents: isEditing ? "none" : "auto", height: "100%", userSelect: "none", WebkitUserSelect: "none" }}>
             {renderVisual()}
           </div>
@@ -284,8 +307,8 @@ export const CanvasCardRenderer: React.FC<CanvasCardRendererProps> = ({
                 <X size={20} />
               </button>
             </div>
-            <div style={{ flex: 1, minHeight: 0 }}>
-              {renderVisual("100%")}
+            <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+              {renderVisual("100%", true)}
             </div>
           </div>
         </div>

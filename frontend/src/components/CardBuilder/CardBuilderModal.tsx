@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   X,
   PieChart,
@@ -11,7 +11,7 @@ import {
   Columns,
 } from "lucide-react";
 import { runQuery, createCard, updateCard } from "../../services/api";
-import type { TableItem, CardConfig, QueryResult, CardItem, MetricItem } from "../../types/larper";
+import type { TableItem, CardConfig, QueryResult, CardItem, MetricItem, RelationshipItem } from "../../types/larper";
 import type { SmartScalarItem, CardBreakdownItem } from "../../types/dashboard";
 
 // Import our replicated visual components
@@ -36,6 +36,7 @@ import { ChartErrorBoundary } from "../metabase-viz/ChartErrorBoundary";
 export interface CardBuilderModalProps {
   dashboardId: string;
   tables: TableItem[];
+  relationships?: RelationshipItem[];
   metrics?: MetricItem[];
   isOpen: boolean;
   onClose: () => void;
@@ -59,13 +60,13 @@ const VIZ_TYPES = [
 export const CardBuilderModal: React.FC<CardBuilderModalProps> = ({
   dashboardId,
   tables,
+  relationships = [],
   metrics = [],
   isOpen,
   onClose,
   onCardCreated,
   editingCard,
 }) => {
-  if (!isOpen) return null;
 
   const [selectedTableId, setSelectedTableId] = useState<string>(editingCard?.table_id || tables[0]?.id || "");
   const [vizType, setVizType] = useState<string>(editingCard?.viz_type || "donut");
@@ -86,6 +87,24 @@ export const CardBuilderModal: React.FC<CardBuilderModalProps> = ({
 
   const selectedTable = tables.find((t) => t.id === selectedTableId) || tables[0];
 
+  // Find joined tables via star-schema relationships
+  const joinedTables = useMemo(() => {
+    if (!relationships || !selectedTableId) return [];
+    const linkedIds = new Set<string>();
+    relationships.forEach((rel) => {
+      if (rel.from_table_id === selectedTableId) {
+        linkedIds.add(rel.to_table_id);
+      } else if (rel.to_table_id === selectedTableId) {
+        linkedIds.add(rel.from_table_id);
+      }
+    });
+    return tables.filter((t) => linkedIds.has(t.id));
+  }, [relationships, selectedTableId, tables]);
+
+  const allAvailableColumns = useMemo(() => [
+    ...(selectedTable?.columns || []),
+    ...joinedTables.flatMap((jt) => jt.columns),
+  ], [selectedTable, joinedTables]);
   // Saved metrics available for the selected table
   const availableMetrics = metrics.filter((m) => m.table_id === selectedTableId);
   const activeMetric = availableMetrics.find((m) => m.id === selectedMetricId);
@@ -261,6 +280,8 @@ export const CardBuilderModal: React.FC<CardBuilderModalProps> = ({
     return <CartesianChart option={opt} height={280} />;
   };
 
+  if (!isOpen) return null;
+
   return (
     <div
       style={{
@@ -417,15 +438,25 @@ export const CardBuilderModal: React.FC<CardBuilderModalProps> = ({
                   style={{ width: "100%", padding: "0.4rem", borderRadius: "4px", border: "1px solid #cbd5e1", fontSize: "0.8125rem" }}
                 >
                   <option value="">-- None --</option>
-                  {selectedTable?.columns.map((c) => (
-                    <option key={c.name} value={c.name}>
-                      {c.name} ({c.semantic_type})
-                    </option>
+                  <optgroup label={`${selectedTable?.display_name || "Primary"} (Primary Table)`}>
+                    {selectedTable?.columns.map((c) => (
+                      <option key={c.name} value={c.name}>
+                        {c.name} ({c.semantic_type})
+                      </option>
+                    ))}
+                  </optgroup>
+                  {joinedTables.map((jt) => (
+                    <optgroup key={jt.id} label={`${jt.display_name} (Joined Table)`}>
+                      {jt.columns.map((c) => (
+                        <option key={`${jt.id}.${c.name}`} value={c.name}>
+                          {c.name} ({c.semantic_type})
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
 
-                {/* Date Grain if date */}
-                {selectedTable?.columns.find((c) => c.name === selectedDim)?.semantic_type === "date" && (
+                {allAvailableColumns.find((c) => c.name === selectedDim)?.semantic_type === "date" && (
                   <div style={{ marginTop: "0.375rem" }}>
                     <span style={{ fontSize: "0.6875rem", color: "#64748b" }}>Date Bucket:</span>
                     <select
@@ -532,10 +563,21 @@ export const CardBuilderModal: React.FC<CardBuilderModalProps> = ({
                     onChange={(e) => setSelectedMeas(e.target.value)}
                     style={{ padding: "0.4rem", borderRadius: "4px", border: "1px solid #cbd5e1", fontSize: "0.8125rem" }}
                   >
-                    {selectedTable?.columns.map((c) => (
-                      <option key={c.name} value={c.name}>
-                        {c.name}
-                      </option>
+                    <optgroup label={`${selectedTable?.display_name || "Primary"} (Primary Table)`}>
+                      {selectedTable?.columns.map((c) => (
+                        <option key={c.name} value={c.name}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                    {joinedTables.map((jt) => (
+                      <optgroup key={jt.id} label={`${jt.display_name} (Joined Table)`}>
+                        {jt.columns.map((c) => (
+                          <option key={`${jt.id}.${c.name}`} value={c.name}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </optgroup>
                     ))}
                   </select>
 

@@ -609,6 +609,35 @@ def test_excel_ingestion():
 
     client.delete(f"/api/v1/dashboards/{dash_id}")
 
+def test_query_without_measures_defaults_to_count():
+    res = client.post("/api/v1/dashboards", json={"title": "Empty Measure QA"})
+    assert res.status_code == 200
+    dash_id = res.json()["id"]
+
+    sample_csv = "cat,val\nA,10\nB,20\n"
+    res = _upload_file(dash_id, "data.csv", sample_csv.encode("utf-8"))
+    tbl_id = res.json()["tables"][0]["id"]
+
+    # Query with dimension but NO measures specified
+    query_payload = {
+        "table_id": tbl_id,
+        "viz_type": "donut",
+        "config": {
+            "dimensions": [{"column": "cat"}],
+            "measures": [],
+            "filters": [],
+            "limit": 10,
+            "sort_desc": True
+        }
+    }
+    res = client.post(f"/api/v1/dashboards/{dash_id}/query", json=query_payload)
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["viz_type"] == "donut"
+    assert len(body["data"]) == 2
+    assert body["data"][0]["name"] in ["A", "B"]
+
+    client.delete(f"/api/v1/dashboards/{dash_id}")
 
 if __name__ == "__main__":
     test_full_pipeline()

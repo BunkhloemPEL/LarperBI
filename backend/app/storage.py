@@ -30,15 +30,23 @@ def profile_dataframe(df: pl.DataFrame) -> List[ColumnMetadata]:
         elif dtype == pl.Boolean:
             sem_type = "dimension"
         else:
-            # Check if strings are date-formatted
+            # Check if strings are date-formatted (including ISO timestamps)
             sample_non_null = df[col].drop_nulls().head(10).to_list()
             is_date = False
             if sample_non_null and len(str(sample_non_null[0])) >= 8:
                 try:
-                    df.select(pl.col(col).str.to_date(strict=False))
-                    is_date = True
+                    res = df.select(pl.col(col).str.to_date(strict=False))
+                    if res[col].null_count() < len(res):
+                        is_date = True
                 except Exception:
-                    is_date = False
+                    pass
+                if not is_date:
+                    try:
+                        res = df.select(pl.col(col).str.to_datetime(strict=False))
+                        if res[col].null_count() < len(res):
+                            is_date = True
+                    except Exception:
+                        pass
             sem_type = "date" if is_date else "dimension"
 
         # Unique & null counts
@@ -69,6 +77,7 @@ class IngestResult:
 
 EXCEL_EXTENSIONS = {".xlsx", ".xls", ".xlsb", ".ods"}
 TEXT_EXTENSIONS = {".csv", ".tsv", ".txt"}
+JSON_EXTENSIONS = {".json"}
 PREVIEW_ROW_LIMIT = 15
 UPLOAD_TTL_SECONDS = 30 * 60
 
@@ -203,6 +212,45 @@ def _preview_text(path: str) -> List[Dict[str, Any]]:
     preview = _preview_frame(df)
     return [{"name": "CSV", **preview, "error": None}]
 
+def _load_json_to_df(path: str) -> pl.DataFrame:
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if isinstance(data, dict):
+        # Case 1: Simple KV dictionary like {"5812": "Restaurants", ...}
+        if data and all(not isinstance(v, (dict, list)) for v in data.values()):
+            keys = list(data.keys())
+            vals = list(data.values())
+            key_col = "code" if all(k.isdigit() for k in keys) else "key"
+            val_col = "description" if any("desc" in str(v).lower() or len(str(v)) > 5 for v in vals) else "value"
+            return pl.DataFrame({key_col: keys, val_col: vals})
+        # Case 2: Nested target dictionary like {"target": {"id": "Yes"}}
+        if len(data) == 1 and isinstance(next(iter(data.values())), dict):
+            sub_key = next(iter(data.keys()))
+            sub_dict = data[sub_key]
+            keys = list(sub_dict.keys())
+            vals = list(sub_dict.values())
+            return pl.DataFrame({"key": keys, sub_key: vals})
+        try:
+            return pl.from_dict(data)
+        except Exception:
+            return pl.DataFrame({"key": list(data.keys()), "value": [str(v) for v in data.values()]})
+    elif isinstance(data, list):
+        if not data:
+            raise ValueError("The JSON array is empty.")
+        if isinstance(data[0], dict):
+            return pl.from_dicts(data)
+        return pl.DataFrame({"value": data})
+    else:
+        raise ValueError("Unsupported JSON format. Expected JSON object or array.")
+
+
+def _preview_json(path: str) -> List[Dict[str, Any]]:
+    df = _load_json_to_df(path)
+    if df.width == 0:
+        raise ValueError("No columns were found in the uploaded JSON file.")
+    preview = _preview_frame(df.head(PREVIEW_ROW_LIMIT))
+    return [{"name": "JSON", **preview, "error": None}]
+
 
 def _upload_meta_path(upload_id: str) -> str:
     return os.path.join(UPLOADS_DIR, f"{upload_id}.json")
@@ -275,10 +323,10 @@ def inspect_upload(dashboard_id: str, filename: str, content_bytes: bytes) -> Di
 
     safe_filename = _sanitize_filename(filename)
     ext = os.path.splitext(safe_filename)[1].lower()
-    if ext not in EXCEL_EXTENSIONS | TEXT_EXTENSIONS:
+    if ext not in EXCEL_EXTENSIONS | TEXT_EXTENSIONS | JSON_EXTENSIONS:
         raise ValueError(
             f"Unsupported file type '{ext or safe_filename}'. "
-            "Upload a CSV, XLSX, XLS, XLSB, or ODS file."
+            "Upload a CSV, XLSX, XLS, XLSB, ODS, or JSON file."
         )
 
     upload_id = f"upl_{uuid.uuid4().hex}"
@@ -289,6 +337,8 @@ def inspect_upload(dashboard_id: str, filename: str, content_bytes: bytes) -> Di
     try:
         if ext in EXCEL_EXTENSIONS:
             sheets = _preview_excel(upload_path, safe_filename)
+        elif ext in JSON_EXTENSIONS:
+            sheets = _preview_json(upload_path)
         else:
             try:
                 sheets = _preview_text(upload_path)
@@ -374,10 +424,17 @@ def commit_upload(dashboard_id: str, upload_id: str, selected_sheets: List[str])
                 raise ValueError("The uploaded file has no data rows.")
             persisted.append(_persist_table(dashboard_id, dash_dir, stem, df))
 
+        elif ext in JSON_EXTENSIONS:
+            df = _load_json_to_df(path)
+            if df.width == 0:
+                raise ValueError("No columns were found in the uploaded file.")
+            if df.height == 0:
+                raise ValueError("The uploaded file has no data rows.")
+            persisted.append(_persist_table(dashboard_id, dash_dir, stem, df))
         else:
             raise ValueError(
                 f"Unsupported file type '{ext or safe_filename}'. "
-                "Upload a CSV, XLSX, XLS, XLSB, or ODS file."
+                "Upload a CSV, XLSX, XLS, XLSB, ODS, or JSON file."
             )
     except Exception as exc:
         if isinstance(exc, ValueError):

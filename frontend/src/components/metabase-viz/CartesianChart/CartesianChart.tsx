@@ -27,13 +27,18 @@ export const CartesianChart: React.FC<CartesianChartProps> = ({
 
     chartRef.current.setOption(option, true);
 
+    let resizeTimer: number | undefined;
     const resizeObserver = new ResizeObserver(() => {
-      chartRef.current?.resize();
+      clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        chartRef.current?.resize();
+      }, 40);
     });
 
     resizeObserver.observe(containerRef.current);
 
     return () => {
+      clearTimeout(resizeTimer);
       resizeObserver.disconnect();
     };
   }, [option]);

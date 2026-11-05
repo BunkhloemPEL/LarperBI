@@ -1,7 +1,7 @@
 import React, { type ReactNode } from "react";
 import styles from "./DashCard.module.css";
 import { Info, Download, GripVertical } from "lucide-react";
-
+import { CardSkeleton } from "../common/CardSkeleton";
 export interface DashCardProps {
   title?: string;
   description?: string;
@@ -9,6 +9,9 @@ export interface DashCardProps {
   children: ReactNode;
   onExportCsv?: () => void;
   isLoading?: boolean;
+  isRevalidating?: boolean;
+  actions?: ReactNode;
+  vizType?: string;
 }
 
 export const DashCard: React.FC<DashCardProps> = ({
@@ -18,6 +21,9 @@ export const DashCard: React.FC<DashCardProps> = ({
   children,
   onExportCsv,
   isLoading = false,
+  isRevalidating = false,
+  actions,
+  vizType = "bar",
 }) => {
   return (
     <div className={`${styles.cardRoot} ${className}`}>
@@ -33,6 +39,10 @@ export const DashCard: React.FC<DashCardProps> = ({
             )}
           </div>
           <div className={styles.actionsPanel} data-dontdrag="true">
+            {isRevalidating && (
+              <span className={styles.revalidatingSpinner} title="Updating card data..." />
+            )}
+            {actions}
             {onExportCsv && (
               <button
                 type="button"
@@ -48,7 +58,7 @@ export const DashCard: React.FC<DashCardProps> = ({
         </div>
       )}
       <div className={styles.cardContent}>
-        {isLoading ? <div className={styles.skeletonPulse} /> : children}
+        {isLoading ? <CardSkeleton vizType={vizType} /> : children}
       </div>
     </div>
   );

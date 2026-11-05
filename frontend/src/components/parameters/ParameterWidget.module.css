@@ -28,6 +28,8 @@
   transition: all 0.15s ease-in-out;
   position: relative;
   user-select: none;
+  font-family: inherit;
+  outline: none;
 }
 
 .filterPill:hover {

@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import * as echarts from "echarts";
 import type { EChartsOption } from "echarts";
 import { METABASE_PALETTE, formatCurrencyCompact } from "../CartesianChart/echarts-utils";
+import { compactifyValue } from "../SmartScalar/sizing";
 import type { CardBreakdownItem } from "../../../types/dashboard";
 
 export interface DonutChartProps {
@@ -33,7 +34,7 @@ export const DonutChart: React.FC<DonutChartProps> = ({
 
     const safeData = Array.isArray(data) ? data : [];
     const totalVal = safeData.reduce((acc, curr) => acc + (typeof curr?.value === "number" ? curr.value : 0), 0);
-    const displayTotal = centerTitle || formatCurrencyCompact(totalVal);
+    const displayTotal = centerTitle || compactifyValue(totalVal);
     const option: EChartsOption = {
       color: METABASE_PALETTE,
       tooltip: {
@@ -128,13 +129,18 @@ export const DonutChart: React.FC<DonutChartProps> = ({
 
     chartRef.current.setOption(option, true);
 
+    let resizeTimer: number | undefined;
     const resizeObserver = new ResizeObserver(() => {
-      chartRef.current?.resize();
+      clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        chartRef.current?.resize();
+      }, 40);
     });
 
     resizeObserver.observe(containerRef.current);
 
     return () => {
+      clearTimeout(resizeTimer);
       resizeObserver.disconnect();
     };
   }, [data, centerTitle, centerSubtitle]);

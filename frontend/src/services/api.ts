@@ -14,7 +14,7 @@ import type {
   QueryResult,
 } from "../types/larper";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8001";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8001";
 
 export async function fetchDashboards(): Promise<DashboardItem[]> {
   const res = await fetch(`${API_BASE_URL}/api/v1/dashboards`);
@@ -277,7 +277,7 @@ export async function runQuery(dashboardId: string, tableId: string, vizType: st
     headers: { "Content-Type": "application/json" },
     body: jsonStringify({ table_id: tableId, viz_type: vizType, config }),
   });
-  if (!res.ok) throw new Error("Failed to execute query");
+  if (!res.ok) throw new Error(await errorMessage(res, "Failed to execute query"));
   return res.json();
 }
 

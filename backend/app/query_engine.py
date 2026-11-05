@@ -181,10 +181,9 @@ def execute_card_query(dashboard_id: str, table_id: str, viz_type: str, config: 
             else:
                 agg_exprs.append(pl.col(cname).sum().fill_null(0).alias(alias))
     # If no measures specified, default to count
-    if not agg_exprs and not group_cols:
+    if not agg_exprs:
         agg_exprs.append(pl.len().alias("count"))
         measure_aliases.append("count")
-
     # 6. Execute Aggregation
     if group_cols:
         res_df = df.group_by(group_cols).agg(agg_exprs)
@@ -207,9 +206,27 @@ def execute_card_query(dashboard_id: str, table_id: str, viz_type: str, config: 
     # 7. Shape Data for Targeted Visual Component
     shaped_data: Any = {}
 
-    if viz_type == "smart_scalar":
-        val = float(raw_rows[0][0]) if raw_rows and len(raw_rows[0]) > 0 else 0.0
+    meas_col = measure_aliases[0] if measure_aliases else "count"
+    meas_idx = raw_columns.index(meas_col) if meas_col in raw_columns else -1
 
+    def _extract_scalar_val() -> float:
+        if not raw_rows or len(raw_rows[0]) == 0:
+            return 0.0
+        row = raw_rows[0]
+        if 0 <= meas_idx < len(row):
+            try:
+                return float(row[meas_idx] or 0.0)
+            except (ValueError, TypeError):
+                pass
+        for item in row:
+            try:
+                return float(item or 0.0)
+            except (ValueError, TypeError):
+                continue
+        return 0.0
+
+    if viz_type == "smart_scalar":
+        val = _extract_scalar_val()
         first_measure = config.measures[0] if config.measures else None
         metric_title = "Total Metric"
         fmt_type = "number"
@@ -282,7 +299,7 @@ def execute_card_query(dashboard_id: str, table_id: str, viz_type: str, config: 
         shaped_data = steps
 
     elif viz_type == "gauge":
-        val = float(raw_rows[0][0]) if raw_rows and len(raw_rows[0]) > 0 else 0.0
+        val = _extract_scalar_val()
         shaped_data = {
             "value": round(val, 2),
             "min": 0,
@@ -292,7 +309,7 @@ def execute_card_query(dashboard_id: str, table_id: str, viz_type: str, config: 
         }
 
     elif viz_type == "progress":
-        val = float(raw_rows[0][0]) if raw_rows and len(raw_rows[0]) > 0 else 0.0
+        val = _extract_scalar_val()
         shaped_data = {
             "current": round(val, 2),
             "goal": round(val * 1.25, 2),
